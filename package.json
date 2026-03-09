@@ -1,0 +1,27 @@
+{
+  "name": "realtime-transcript",
+  "version": "2.0.0",
+  "description": "対面会議の録音・文字起こし・AI要約アプリ（完全ローカル・脱Python構成）",
+  "main": "main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "keywords": [
+    "electron",
+    "transcription",
+    "AI",
+    "meeting",
+    "whisper",
+    "ollama"
+  ],
+  "dependencies": {
+    "node-llama-cpp": "^3.17.1",
+    "whisper-node": "^1.1.0"
+  },
+  "devDependencies": {
+    "electron": "^40.8.0"
+  }
+}

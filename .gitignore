@@ -1,0 +1,19 @@
+node_modules/
+dist/
+out/
+build/
+bin/
+recordings/
+transcripts/
+venv/
+*.wav
+*.mp3
+__pycache__/
+*.pyc
+.env
+.DS_Store
+*.exe
+*.msi
+*.squirrel.exe
+# LLM モデルファイル（大容量のため除外）
+models/*.bin

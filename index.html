@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ミーティングトランスクリプト</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🎤 ミーティングトランスクリプト</h1>
+        <p class="subtitle">録音 → 文字起こし → AI整形・要約 (完全ローカル)</p>
+        <div id="ollamaStatus" class="ollama-status checking">
+          Ollama 確認中...
+        </div>
+      </header>
+
+      <div class="controls">
+        <button id="startBtn" class="btn btn-primary">
+          <span class="icon">⏺</span> 録音開始
+        </button>
+        <button id="stopBtn" class="btn btn-danger" disabled>
+          <span class="icon">⏹</span> 録音停止・解析
+        </button>
+        <button id="summaryBtn" class="btn btn-success" disabled>
+          <span class="icon">✨</span> 要約生成
+        </button>
+        <button id="clearBtn" class="btn btn-small">クリア</button>
+        <button id="copyBtn" class="btn btn-small" disabled>コピー</button>
+      </div>
+
+      <div
+        class="waveform-container"
+        id="waveformContainer"
+        style="display: none"
+      >
+        <canvas id="waveformCanvas"></canvas>
+        <span id="recordingTime" class="recording-time">00:00</span>
+      </div>
+
+      <div class="status-bar">
+        <span id="statusIndicator" class="status-indicator info"></span>
+        <span id="statusText" class="status-text">準備完了</span>
+      </div>
+
+      <div class="main-content">
+        <div class="card">
+          <div class="section-header">
+            <h2>📝 文字起こし（AI整形）</h2>
+          </div>
+          <div id="transcriptArea" class="content-area">
+            <p class="placeholder">
+              録音を停止すると、ここに文字起こし結果が表示されます。
+            </p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-header">
+            <h2>📋 要約</h2>
+          </div>
+          <div id="summaryArea" class="content-area">
+            <p class="placeholder">
+              文字起こし後に「要約生成」ボタンをクリックしてください。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="history-section">
+        <h3>📂 過去の録音</h3>
+        <div id="transcriptsList" class="list-container">
+          <p class="placeholder">まだ録音がありません。</p>
+        </div>
+      </div>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
