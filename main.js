@@ -4,6 +4,12 @@ const fs = require("fs");
 const { spawn } = require("child_process");
 const os = require("os");
 
+// Windows: コンソール出力をUTF-8に統一
+if (process.platform === "win32") {
+  process.stdout.reconfigure?.({ encoding: "utf8" });
+  process.stderr.reconfigure?.({ encoding: "utf8" });
+}
+
 let mainWindow;
 const MODEL_FILE = "Qwen3.5-0.8B-Q4_K_M.gguf";
 
