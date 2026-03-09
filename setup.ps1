@@ -185,6 +185,68 @@ if (Test-Path $modelPath) {
 }
 
 # ----------------------------------------------------------
+# 9. 話者分離モデルのダウンロード (sherpa-onnx)
+# ----------------------------------------------------------
+Write-Step "話者分離モデルを確認中..."
+
+$diarDir  = Join-Path $modelsDir "diarization"
+$segModel = Join-Path $diarDir "segmentation.onnx"
+$embModel = Join-Path $diarDir "embedding.onnx"
+
+New-Item -ItemType Directory -Path $diarDir -Force | Out-Null
+
+$diarOk = (Test-Path $segModel) -and (Test-Path $embModel)
+
+if ($diarOk) {
+    Write-OK "話者分離モデル確認済み"
+} else {
+    Write-Warn "話者分離モデルが見つかりません。ダウンロードします（計 ~45MB）..."
+
+    function Download-SherpaModel($url, $destOnnx, $label) {
+        $tmpTar = Join-Path $env:TEMP "sherpa_tmp.tar.bz2"
+        $tmpDir = Join-Path $env:TEMP "sherpa_extract"
+        try {
+            Write-Host "  [$label] ダウンロード中: $url" -ForegroundColor Gray
+            Invoke-WebRequest -Uri $url -OutFile $tmpTar -UseBasicParsing
+            if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
+            New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+            tar -xf $tmpTar -C $tmpDir
+            $onnx = Get-ChildItem $tmpDir -Recurse -Filter "model.onnx" | Select-Object -First 1
+            if ($onnx) {
+                Copy-Item $onnx.FullName $destOnnx -Force
+                Write-OK "[$label] 完了 → $destOnnx"
+            } else {
+                Write-Err "[$label] model.onnx が見つかりませんでした"
+            }
+        } catch {
+            Write-Err "[$label] ダウンロードに失敗しました: $_"
+        } finally {
+            Remove-Item $tmpTar  -ErrorAction SilentlyContinue
+            Remove-Item $tmpDir  -Recurse -ErrorAction SilentlyContinue
+        }
+    }
+
+    if (-not (Test-Path $segModel)) {
+        Download-SherpaModel `
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2" `
+            $segModel `
+            "セグメンテーション"
+    }
+
+    if (-not (Test-Path $embModel)) {
+        # 埋め込みモデルは直接 .onnx ファイルとして提供されている
+        $embUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+        try {
+            Write-Host "  [話者埋め込み] ダウンロード中..." -ForegroundColor Gray
+            Invoke-WebRequest -Uri $embUrl -OutFile $embModel -UseBasicParsing
+            Write-OK "[話者埋め込み] 完了 ($([math]::Round((Get-Item $embModel).Length/1MB,1)) MB)"
+        } catch {
+            Write-Err "[話者埋め込み] ダウンロードに失敗しました: $_"
+        }
+    }
+}
+
+# ----------------------------------------------------------
 # 完了
 # ----------------------------------------------------------
 Write-Host @"

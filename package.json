@@ -19,6 +19,7 @@
   ],
   "dependencies": {
     "node-llama-cpp": "^3.17.1",
+    "sherpa-onnx": "^1.12.28",
     "whisper-node": "^1.1.0"
   },
   "devDependencies": {

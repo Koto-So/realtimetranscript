@@ -18,3 +18,5 @@ __pycache__/
 # LLM モデルファイル（大容量のため除外）
 models/*.bin
 models/*.gguf
+# 話者分離モデル（setup.ps1 でダウンロード）
+models/diarization/*.onnx

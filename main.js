@@ -192,6 +192,7 @@ async function transcribeAudio(wavPath) {
   }
 
   return new Promise((resolve, reject) => {
+    // -oj でタイムスタンプ付き JSON を出力
     const args = [
       "-m",
       modelPath,
@@ -199,7 +200,7 @@ async function transcribeAudio(wavPath) {
       wavPath,
       "-l",
       "ja",
-      "-otxt",
+      "-oj",
       "-of",
       wavPath,
     ];
@@ -219,14 +220,37 @@ async function transcribeAudio(wavPath) {
         );
         return;
       }
-      // -otxt オプションで wavPath.txt に出力される
-      const txtFile = wavPath + ".txt";
-      if (fs.existsSync(txtFile)) {
-        const text = fs.readFileSync(txtFile, "utf-8").trim();
-        fs.unlinkSync(txtFile); // 一時ファイル削除
-        resolve([{ speech: text, start: 0, end: 0 }]);
+      // -oj オプションで wavPath.json に出力される
+      const jsonFile = wavPath + ".json";
+      if (fs.existsSync(jsonFile)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(jsonFile, "utf-8"));
+          fs.unlinkSync(jsonFile);
+          const segments = (data.transcription || [])
+            .map((seg) => ({
+              text: (seg.text || "").trim(),
+              start_ms: seg.offsets?.from ?? 0,
+              end_ms: seg.offsets?.to ?? 0,
+            }))
+            .filter((s) => s.text);
+          resolve(
+            segments.length > 0
+              ? segments
+              : [
+                  {
+                    text: "(音声を認識できませんでした)",
+                    start_ms: 0,
+                    end_ms: 0,
+                  },
+                ],
+          );
+        } catch (e) {
+          resolve([{ text: "(JSON解析エラー)", start_ms: 0, end_ms: 0 }]);
+        }
       } else {
-        resolve([{ speech: "(音声を認識できませんでした)", start: 0, end: 0 }]);
+        resolve([
+          { text: "(音声を認識できませんでした)", start_ms: 0, end_ms: 0 },
+        ]);
       }
     });
     proc.on("error", (e) =>
@@ -235,9 +259,98 @@ async function transcribeAudio(wavPath) {
   });
 }
 
+// 話者分離モデルのパスを取得
+function getDiarizationModelPath() {
+  const candidates = [
+    path.join(process.resourcesPath || "", "models", "diarization"),
+    path.join(__dirname, "models", "diarization"),
+  ];
+  for (const dir of candidates) {
+    const seg = path.join(dir, "segmentation.onnx");
+    const emb = path.join(dir, "embedding.onnx");
+    if (fs.existsSync(seg) && fs.existsSync(emb)) {
+      return { segmentation: seg, embedding: emb };
+    }
+  }
+  return null;
+}
+
+// sherpa-onnx による話者分離
+async function diarizeAudio(wavPath) {
+  const models = getDiarizationModelPath();
+  if (!models) {
+    console.log("[DIAR] 話者分離モデルが見つかりません。スキップします。");
+    return null;
+  }
+  try {
+    const SherpaOnnx = require("sherpa-onnx");
+    const sd = SherpaOnnx.createOfflineSpeakerDiarization({
+      segmentation: {
+        pyannote: { model: models.segmentation },
+        numThreads: 2,
+        debug: 0,
+        provider: "cpu",
+      },
+      embedding: {
+        model: models.embedding,
+        numThreads: 2,
+        debug: 0,
+        provider: "cpu",
+      },
+      clustering: { numClusters: -1, threshold: 0.5 },
+      minDurationOn: 0.3,
+      minDurationOff: 0.5,
+    });
+    const wave = SherpaOnnx.readWave(wavPath);
+    const diarSegments = sd.process(wave.samples);
+    sd.free();
+    console.log("[DIAR] 話者分離結果:", diarSegments);
+    return diarSegments; // [{start, end, speaker}] (秒単位)
+  } catch (e) {
+    console.error("[DIAR] 話者分離エラー:", e.message);
+    return null;
+  }
+}
+
+// whisper のタイムスタンプ付きセグメントと話者分離結果をアライメント
+function alignSpeakers(whisperSegments, diarSegments) {
+  if (!diarSegments || diarSegments.length === 0) {
+    // 話者分離なし: speaker=1 を付与するだけ
+    return whisperSegments.map((s) => ({ ...s, speaker: 1 }));
+  }
+  return whisperSegments.map((ws) => {
+    const wsStart = ws.start_ms / 1000;
+    const wsEnd = ws.end_ms / 1000;
+    let bestSpeaker = 1;
+    let bestOverlap = 0;
+    for (const ds of diarSegments) {
+      const overlap = Math.max(
+        0,
+        Math.min(wsEnd, ds.end) - Math.max(wsStart, ds.start),
+      );
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap;
+        bestSpeaker = ds.speaker + 1; // 0-indexed → 1-indexed
+      }
+    }
+    return { ...ws, speaker: bestSpeaker };
+  });
+}
+
 async function formatWithLLM(rawSegments) {
-  const rawText = rawSegments.map((s) => s.speech || s.text || "").join("\n");
-  const prompt = `以下は音声認識の生テキストです。会話形式に整形し、話者が複数いる場合は「話者A:」「話者B:」のように区別してください。また最後に【要点】として重要ポイントを箇条書きしてください。\n\nテキスト:\n${rawText}\n\n整形後:`;
+  // speaker フィールドがある場合は話者ラベル付き、ない場合はプレーン
+  const hasSpeakers = rawSegments.some((s) => s.speaker && s.speaker > 0);
+  const rawText = rawSegments
+    .map((s) => {
+      const text = (s.text || s.speech || "").trim();
+      if (hasSpeakers && s.speaker) return `[話者${s.speaker}]: ${text}`;
+      return text;
+    })
+    .join("\n");
+  const speakerInstruction = hasSpeakers
+    ? "[話者N] の表記を「話者A」「話者B」のように置き換えて会話形式に整形してください。"
+    : "話者が複数いる場合は「話者A:」「話者B:」のように区別してください。";
+  const prompt = `以下は音声認識の結果です。${speakerInstruction}また最後に【要点】として重要ポイントを箇条書きしてください。\n\nテキスト:\n${rawText}\n\n整形後:`;
 
   if (!llamaModel) {
     const ok = await initLlama();
@@ -308,11 +421,17 @@ ipcMain.handle(
         message: "文字起こし中...",
         type: "info",
       });
-      const segments = await transcribeAudio(tmpWav);
-      console.log("Whisper 結果:", segments);
-      if (!segments || segments.length === 0) {
+      const whisperSegments = await transcribeAudio(tmpWav);
+      console.log("[WHISPER] 結果:", whisperSegments);
+      if (!whisperSegments || whisperSegments.length === 0) {
         return { success: false, message: "音声を認識できませんでした。" };
       }
+      mainWindow.webContents.send("status-update", {
+        message: "話者分離中...",
+        type: "info",
+      });
+      const diarSegments = await diarizeAudio(tmpWav);
+      const segments = alignSpeakers(whisperSegments, diarSegments);
       mainWindow.webContents.send("status-update", {
         message: "テキストを整形中...",
         type: "info",
