@@ -86,7 +86,7 @@ async function initLlama() {
     LlamaChatSession = nodeLlamaCpp.LlamaChatSession;
     const llama = await nodeLlamaCpp.getLlama();
     llamaModel = await llama.loadModel({ modelPath });
-    llamaContext = await llamaModel.createContext();
+    llamaContext = await llamaModel.createContext({ sequences: 1 });
     console.log("[LLAMA] モデル読み込み完了:", modelPath);
     if (mainWindow) {
       mainWindow.webContents.send("status-update", {
@@ -239,15 +239,17 @@ async function formatWithLLM(rawSegments) {
       return `【文字起こし結果】\n${rawText}\n\n【注記】\nLLM モデルが見つかりません。models/ フォルダに ${MODEL_FILE} を配置してください。`;
     }
   }
+  let sequence = null;
   try {
-    const session = new LlamaChatSession({
-      contextSequence: llamaContext.getSequence(),
-    });
+    sequence = llamaContext.getSequence();
+    const session = new LlamaChatSession({ contextSequence: sequence });
     const response = await session.prompt(prompt);
     return response;
   } catch (e) {
     console.error("[LLAMA] formatWithLLM エラー:", e.message);
     return `【文字起こし結果】\n${rawText}\n\n【注記】\nAI 整形エラー: ${e.message}`;
+  } finally {
+    if (sequence) sequence.dispose();
   }
 }
 
@@ -258,10 +260,10 @@ async function generateSummaryLLM(transcriptText, onChunk) {
     const ok = await initLlama();
     if (!ok) return "LLM モデルが見つかりません。";
   }
+  let sequence = null;
   try {
-    const session = new LlamaChatSession({
-      contextSequence: llamaContext.getSequence(),
-    });
+    sequence = llamaContext.getSequence();
+    const session = new LlamaChatSession({ contextSequence: sequence });
     const response = await session.prompt(prompt, {
       onTextChunk: (chunk) => {
         if (onChunk) onChunk(chunk);
@@ -271,6 +273,8 @@ async function generateSummaryLLM(transcriptText, onChunk) {
   } catch (e) {
     console.error("[LLAMA] generateSummaryLLM エラー:", e.message);
     return `要約生成に失敗しました。\n\nエラー: ${e.message}`;
+  } finally {
+    if (sequence) sequence.dispose();
   }
 }
 

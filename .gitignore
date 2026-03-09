@@ -17,3 +17,4 @@ __pycache__/
 *.squirrel.exe
 # LLM モデルファイル（大容量のため除外）
 models/*.bin
+models/*.gguf
