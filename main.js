@@ -16,7 +16,9 @@ const MODEL_FILE = "Qwen3.5-0.8B-Q4_K_M.gguf";
 // node-llama-cpp インスタンス (ESM なので dynamic import で読み込む)
 let llamaModel = null;
 let llamaContext = null;
+let llamaInstance = null;
 let LlamaChatSession = null;
+let LlamaJsonSchemaGrammar = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -90,7 +92,9 @@ async function initLlama() {
     }
     const nodeLlamaCpp = await import("node-llama-cpp");
     LlamaChatSession = nodeLlamaCpp.LlamaChatSession;
+    LlamaJsonSchemaGrammar = nodeLlamaCpp.LlamaJsonSchemaGrammar;
     const llama = await nodeLlamaCpp.getLlama();
+    llamaInstance = llama;
     llamaModel = await llama.loadModel({ modelPath });
     llamaContext = await llamaModel.createContext({ sequences: 1 });
     console.log("[LLAMA] モデル読み込み完了:", modelPath);
@@ -105,6 +109,7 @@ async function initLlama() {
     console.error("[LLAMA] 初期化エラー:", e.message);
     llamaModel = null;
     llamaContext = null;
+    llamaInstance = null;
     if (mainWindow) {
       mainWindow.webContents.send("status-update", {
         message: "LLM 初期化エラー: " + e.message,
@@ -279,11 +284,17 @@ function getDiarizationModelPath() {
 async function diarizeAudio(wavPath) {
   const models = getDiarizationModelPath();
   if (!models) {
-    console.log("[DIAR] 話者分離モデルが見つかりません。スキップします。");
+    console.warn("[DIAR] モデルが見つかりません。話者分離をスキップします。");
     return null;
   }
+
   try {
     const SherpaOnnx = require("sherpa-onnx");
+
+    console.log("[DIAR] 話者分離開始:", wavPath);
+    console.log("[DIAR] segmentation:", models.segmentation);
+    console.log("[DIAR] embedding:", models.embedding);
+
     const sd = SherpaOnnx.createOfflineSpeakerDiarization({
       segmentation: {
         pyannote: { model: models.segmentation },
@@ -297,17 +308,38 @@ async function diarizeAudio(wavPath) {
         debug: 0,
         provider: "cpu",
       },
-      clustering: { numClusters: -1, threshold: 0.5 },
+      clustering: {
+        numClusters: -1, // -1 = 自動検出
+        threshold: 0.5,
+      },
       minDurationOn: 0.3,
       minDurationOff: 0.5,
     });
+
     const wave = SherpaOnnx.readWave(wavPath);
-    const diarSegments = sd.process(wave.samples);
-    sd.free();
-    console.log("[DIAR] 話者分離結果:", diarSegments);
-    return diarSegments; // [{start, end, speaker}] (秒単位)
+    if (!wave || !wave.samples) {
+      console.warn("[DIAR] WAV 読み込み失敗");
+      return null;
+    }
+
+    const result = sd.process(wave.samples);
+
+    if (sd.free) sd.free();
+
+    if (!result || !Array.isArray(result)) {
+      console.warn("[DIAR] 話者分離結果が空です");
+      return null;
+    }
+
+    console.log(`[DIAR] 話者分離完了: ${result.length} セグメント`);
+
+    return result.map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      speaker: seg.speaker, // alignSpeakers 側で +1 するため 0-indexed のまま
+    }));
   } catch (e) {
-    console.error("[DIAR] 話者分離エラー:", e.message);
+    console.error("[DIAR] 話者分離エラー:", e.message || e);
     return null;
   }
 }
@@ -347,26 +379,51 @@ async function formatWithLLM(rawSegments) {
       return text;
     })
     .join("\n");
-  const speakerInstruction = hasSpeakers
-    ? "[話者N] の表記を「話者A」「話者B」のように置き換えて会話形式に整形してください。"
-    : "話者が複数いる場合は「話者A:」「話者B:」のように区別してください。";
-  const prompt = `以下は音声認識の結果です。${speakerInstruction}また最後に【要点】として重要ポイントを箇条書きしてください。\n\nテキスト:\n${rawText}\n\n整形後:`;
 
   if (!llamaModel) {
     const ok = await initLlama();
-    if (!ok) {
-      return `【文字起こし結果】\n${rawText}\n\n【注記】\nLLM モデルが見つかりません。models/ フォルダに ${MODEL_FILE} を配置してください。`;
-    }
+    if (!ok) return rawText;
   }
+
+  // 構造化出力スキーマ: transcript フィールドのみ
+  const schema = {
+    type: "object",
+    properties: {
+      transcript: { type: "string" },
+    },
+    required: ["transcript"],
+  };
+
+  const speakerInstruction = hasSpeakers
+    ? "[話者N] の表記は「話者A:」「話者B:」のように置き換えること。"
+    : "";
+  const prompt = `あなたは音声認識テキストのノイズ除去専門家です。\
+以下のルールに従ってテキストを整形し、JSON の transcript フィールドに出力してください。
+
+ルール:
+- 認識エラーや意味不明な断片は自然な日本語に修正する
+- 言い直し・繰り返し・フィラー（えー、あの、えっと等）を除去する
+- 文末を適切に整える
+- ${speakerInstruction}要点・箇条書き・見出しなど余計なセクションは一切追加しない
+- トランスクリプト本文のみを出力する
+
+入力:
+${rawText}
+
+JSON:`;
+
   let sequence = null;
   try {
+    const grammar = new LlamaJsonSchemaGrammar(llamaInstance, schema);
     sequence = llamaContext.getSequence();
     const session = new LlamaChatSession({ contextSequence: sequence });
-    const response = await session.prompt(prompt);
-    return response;
+    const response = await session.prompt(prompt, { grammar });
+    // JSON をパースして transcript フィールドを取り出す
+    const parsed = JSON.parse(response);
+    return parsed.transcript ?? rawText;
   } catch (e) {
     console.error("[LLAMA] formatWithLLM エラー:", e.message);
-    return `【文字起こし結果】\n${rawText}\n\n【注記】\nAI 整形エラー: ${e.message}`;
+    return rawText;
   } finally {
     if (sequence) sequence.dispose();
   }

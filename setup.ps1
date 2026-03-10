@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # Meeting Transcript App - セットアップスクリプト
 # =============================================================
 # 実行方法: PowerShell で右クリック → PowerShell で実行
@@ -126,26 +126,48 @@ $ffmpegExe = Join-Path $ffmpegDir "ffmpeg.exe"
 Write-OK "resources フォルダを作成しました"
 
 # ----------------------------------------------------------
-# 7. FFmpeg バイナリの確認（案内のみ）
+# 7. FFmpeg バイナリの確認・ダウンロード
 # ----------------------------------------------------------
-Write-Host ""
-Write-Host "  ┌─────────────────────────────────────┐" -ForegroundColor White
-Write-Host "  │  手動配置が必要なバイナリ           │" -ForegroundColor White
-Write-Host "  └─────────────────────────────────────┘" -ForegroundColor White
+Write-Step "FFmpeg を確認中..."
+
+$ffmpegExe = Join-Path $ffmpegDir "ffmpeg.exe"
+$sysFfmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
 
 if (Test-Path $ffmpegExe) {
-    Write-OK "FFmpeg バイナリ: 配置済み"
+    $sizeMB = [math]::Round((Get-Item $ffmpegExe).Length / 1MB, 1)
+    Write-OK "FFmpeg バイナリ: 配置済み ($sizeMB MB)"
+} elseif ($sysFfmpeg) {
+    Write-OK "システムの FFmpeg を使用: $($sysFfmpeg.Source)"
 } else {
-    Write-Warn "FFmpeg バイナリが未配置です。"
-    Write-Host "  → ffmpeg.exe を以下へ配置してください:" -ForegroundColor Yellow
-    Write-Host "    $ffmpegExe" -ForegroundColor Yellow
-    Write-Host "  → ダウンロード: https://github.com/BtbN/FFmpeg-Builds/releases " -ForegroundColor Yellow
-    Write-Host "    (ffmpeg-master-latest-win64-gpl.zip の bin/ffmpeg.exe)" -ForegroundColor Yellow
+    Write-Warn "FFmpeg が見つかりません。ダウンロードします（約 200MB）..."
+    $ffmpegZipUrl  = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+    $ffmpegZip     = Join-Path $env:TEMP "ffmpeg.zip"
+    $ffmpegExtract = Join-Path $env:TEMP "ffmpeg-extract"
+    try {
+        Write-Host "  curl でダウンロード中... (約 200MB)" -ForegroundColor Gray
+        curl.exe -L --progress-bar -o $ffmpegZip $ffmpegZipUrl
+        if ($LASTEXITCODE -ne 0) { throw "curl 失敗 (exit code: $LASTEXITCODE)" }
 
-    # システム ffmpeg があるかフォールバック確認
-    $sysFfmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
-    if ($sysFfmpeg) {
-        Write-Host "  ※ システムの ffmpeg ($($sysFfmpeg.Source)) が利用可能です（フォールバック）" -ForegroundColor DarkGray
+        Write-Host "  展開中..." -ForegroundColor Gray
+        if (Test-Path $ffmpegExtract) { Remove-Item $ffmpegExtract -Recurse -Force }
+        Expand-Archive -Path $ffmpegZip -DestinationPath $ffmpegExtract -Force
+
+        $ffmpegBin = Get-ChildItem $ffmpegExtract -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+        if ($ffmpegBin) {
+            Copy-Item $ffmpegBin.FullName $ffmpegExe -Force
+            $sizeMB = [math]::Round((Get-Item $ffmpegExe).Length / 1MB, 1)
+            Write-OK "FFmpeg のダウンロード・配置完了 ($sizeMB MB)"
+        } else {
+            Write-Err "ffmpeg.exe が ZIP 内に見つかりませんでした"
+        }
+    } catch {
+        Write-Err "FFmpeg のダウンロードに失敗しました: $_"
+        Write-Host "  手動でダウンロードして以下へ配置してください:" -ForegroundColor Yellow
+        Write-Host "  $ffmpegExe" -ForegroundColor Yellow
+        Write-Host "  ダウンロード先: https://github.com/BtbN/FFmpeg-Builds/releases" -ForegroundColor Yellow
+    } finally {
+        Remove-Item $ffmpegZip     -ErrorAction SilentlyContinue
+        Remove-Item $ffmpegExtract -Recurse -ErrorAction SilentlyContinue
     }
 }
 
@@ -155,32 +177,36 @@ if (Test-Path $ffmpegExe) {
 Write-Step "LLM モデル (GGUF) を確認中..."
 
 $modelsDir  = Join-Path $AppDir "models"
-$modelFile  = "Qwen3.5-0.8B-Q4_K_M.gguf"
-$modelPath  = Join-Path $modelsDir $modelFile
+$ggufFile   = "Qwen3.5-0.8B-Q4_K_M.gguf"
+$ggufPath   = Join-Path $modelsDir $ggufFile
 
 New-Item -ItemType Directory -Path $modelsDir -Force | Out-Null
 
-if (Test-Path $modelPath) {
-    $sizeMB = [math]::Round((Get-Item $modelPath).Length / 1MB, 1)
+if (Test-Path $ggufPath) {
+    $sizeMB = [math]::Round((Get-Item $ggufPath).Length / 1MB, 1)
     Write-OK "GGUF モデル確認済み ($sizeMB MB)"
 } else {
     Write-Warn "GGUF モデルが見つかりません。ダウンロードします（約 500MB）..."
-    $modelUrl = "https://huggingface.co/Qwen/Qwen3-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf"
+    $ggufUrl = "https://huggingface.co/Qwen/Qwen3-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf"
     try {
-        Write-Host "  URL: $modelUrl" -ForegroundColor Gray
-        Write-Host "  保存先: $modelPath" -ForegroundColor Gray
-        Invoke-WebRequest -Uri $modelUrl -OutFile $modelPath -UseBasicParsing
-        $sizeMB = [math]::Round((Get-Item $modelPath).Length / 1MB, 1)
+        # curl -L でリダイレクトに追従しながらダウンロード
+        $curlCmd = Get-Command curl.exe -ErrorAction SilentlyContinue
+        if ($curlCmd) {
+            Write-Host "  curl でダウンロード中... (約 500MB)" -ForegroundColor Gray
+            curl.exe -L --progress-bar -o $ggufPath $ggufUrl
+            if ($LASTEXITCODE -ne 0) { throw "curl 失敗 (exit code: $LASTEXITCODE)" }
+        } else {
+            # curl がない場合は Invoke-WebRequest にフォールバック
+            Write-Host "  Invoke-WebRequest でダウンロード中... (約 500MB)" -ForegroundColor Gray
+            Invoke-WebRequest -Uri $ggufUrl -OutFile $ggufPath -UseBasicParsing
+        }
+        $sizeMB = [math]::Round((Get-Item $ggufPath).Length / 1MB, 1)
         Write-OK "GGUF モデルのダウンロード完了 ($sizeMB MB)"
     } catch {
         Write-Err "GGUF モデルのダウンロードに失敗しました: $_"
-        Write-Host "" -ForegroundColor Yellow
         Write-Host "  手動でダウンロードして以下へ配置してください:" -ForegroundColor Yellow
-        Write-Host "  $modelPath" -ForegroundColor Yellow
-        Write-Host "" -ForegroundColor Yellow
-        Write-Host "  ダウンロード先:" -ForegroundColor Yellow
-        Write-Host "  https://huggingface.co/Qwen/Qwen3-0.8B-GGUF" -ForegroundColor Yellow
-        Write-Host "  → $modelFile を選択してダウンロード" -ForegroundColor Yellow
+        Write-Host "  $ggufPath" -ForegroundColor Yellow
+        Write-Host "  ダウンロード先: https://huggingface.co/Qwen/Qwen3-0.8B-GGUF" -ForegroundColor Yellow
     }
 }
 
@@ -202,48 +228,71 @@ if ($diarOk) {
 } else {
     Write-Warn "話者分離モデルが見つかりません。ダウンロードします（計 ~45MB）..."
 
-    function Download-SherpaModel($url, $destOnnx, $label) {
-        $tmpTar = Join-Path $env:TEMP "sherpa_tmp.tar.bz2"
-        $tmpDir = Join-Path $env:TEMP "sherpa_extract"
+    if (-not (Test-Path $segModel)) {
+        $tmpTar = Join-Path $env:TEMP "sherpa_seg.tar.bz2"
+        $tmpDir = Join-Path $env:TEMP "sherpa_seg_extract"
         try {
-            Write-Host "  [$label] ダウンロード中: $url" -ForegroundColor Gray
-            Invoke-WebRequest -Uri $url -OutFile $tmpTar -UseBasicParsing
+            $segUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"
+            Write-Host "  [セグメンテーション] ダウンロード中..." -ForegroundColor Gray
+            Invoke-WebRequest -Uri $segUrl -OutFile $tmpTar -UseBasicParsing
             if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
             New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
             tar -xf $tmpTar -C $tmpDir
             $onnx = Get-ChildItem $tmpDir -Recurse -Filter "model.onnx" | Select-Object -First 1
             if ($onnx) {
-                Copy-Item $onnx.FullName $destOnnx -Force
-                Write-OK "[$label] 完了 → $destOnnx"
+                Copy-Item $onnx.FullName $segModel -Force
+                Write-OK "[セグメンテーション] 完了 ($([math]::Round((Get-Item $segModel).Length/1MB,1)) MB)"
             } else {
-                Write-Err "[$label] model.onnx が見つかりませんでした"
+                Write-Err "[セグメンテーション] model.onnx が見つかりませんでした"
             }
         } catch {
-            Write-Err "[$label] ダウンロードに失敗しました: $_"
+            Write-Err "[セグメンテーション] ダウンロードに失敗しました: $_"
         } finally {
-            Remove-Item $tmpTar  -ErrorAction SilentlyContinue
-            Remove-Item $tmpDir  -Recurse -ErrorAction SilentlyContinue
+            Remove-Item $tmpTar -ErrorAction SilentlyContinue
+            Remove-Item $tmpDir -Recurse -ErrorAction SilentlyContinue
         }
-    }
-
-    if (-not (Test-Path $segModel)) {
-        Download-SherpaModel `
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2" `
-            $segModel `
-            "セグメンテーション"
+    } else {
+        Write-OK "[セグメンテーション] 確認済み"
     }
 
     if (-not (Test-Path $embModel)) {
-        # 埋め込みモデルは直接 .onnx ファイルとして提供されている
-        $embUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
         try {
+            $embUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
             Write-Host "  [話者埋め込み] ダウンロード中..." -ForegroundColor Gray
             Invoke-WebRequest -Uri $embUrl -OutFile $embModel -UseBasicParsing
             Write-OK "[話者埋め込み] 完了 ($([math]::Round((Get-Item $embModel).Length/1MB,1)) MB)"
         } catch {
             Write-Err "[話者埋め込み] ダウンロードに失敗しました: $_"
         }
+    } else {
+        Write-OK "[話者埋め込み] 確認済み"
     }
+}
+
+# ----------------------------------------------------------
+# 10. デスクトップショートカット作成
+# ----------------------------------------------------------
+Write-Step "デスクトップショートカットを作成中..."
+
+$iconPath     = Join-Path $AppDir "resources\favicon.ico"
+$startVbs     = Join-Path $AppDir "start.vbs"
+$desktopPath  = [Environment]::GetFolderPath("Desktop")
+$shortcutPath = Join-Path $desktopPath "議事録アプリ.lnk"
+
+try {
+    $WshShell                  = New-Object -ComObject WScript.Shell
+    $Shortcut                  = $WshShell.CreateShortcut($shortcutPath)
+    $Shortcut.TargetPath       = "wscript.exe"
+    $Shortcut.Arguments        = "`"$startVbs`""
+    $Shortcut.WorkingDirectory = $AppDir
+    if (Test-Path $iconPath) {
+        $Shortcut.IconLocation = $iconPath
+    }
+    $Shortcut.Description      = "議事録自動生成アプリを起動"
+    $Shortcut.Save()
+    Write-OK "デスクトップに「議事録アプリ」ショートカットを作成しました"
+} catch {
+    Write-Warn "ショートカット作成に失敗しました: $_"
 }
 
 # ----------------------------------------------------------
@@ -255,19 +304,14 @@ Write-Host @"
    セットアップ完了！
   ================================================
 
-  【次のステップ】
-
-  1. FFmpeg バイナリの配置（オプション）
-     resources/ffmpeg/ffmpeg.exe に配置すると優先される
-     （システムの ffmpeg がある場合は不要）
-
-  2. アプリの起動
-     npm start
+  【アプリの起動】
+  デスクトップの「議事録アプリ」アイコンをダブルクリック
+  または: npm start
 
   【補足】
   - LLM は node-llama-cpp で直接 GGUF モデルを実行します
     （Ollama は不要です）
-  - GGUF モデル: models/$modelFile
+  - GGUF モデル: models/$ggufFile
   - モデルは初回起動時に自動で読み込まれます（数秒〜数十秒）
 
 "@ -ForegroundColor Green
