@@ -1,273 +1,153 @@
-# リアルタイムトランスクリプト
+# 議事録アプリ
 
-対面会議でのミーティングを記録し、記録したトランスクリプトをローカルLLMで要約するWindowsデスクトップアプリケーションです。
+対面会議の音声を録音し、ローカルLLMでトランスクリプトを自動整形・要約する Windows デスクトップアプリです。
 
-🎯 **重要な特徴**: ユーザーは Node.js または Python をインストールする必要がありません！ Nuitka + Electron Forge により、完全にバンドルされたスタンドアロンアプリケーションを配布できます。
+**Python・Ollama・クラウド接続は一切不要です。** すべての処理がローカルで完結します。
 
 ## 機能
 
-- 🎤 **録音機能**: 対面会議の音声を高品質で録音
-- 👥 **話者分離**: 複数の話者を自動的に識別・分離
-- 📝 **リアルタイムトランスクリプト**: 音声をリアルタイムでテキスト化
-- ✨ **AI要約**: ローカルLLM（Ollama）による会議内容の要約生成
-- 💾 **自動保存**: トランスクリプトをJSON形式で自動保存
-- 📦 **スタンドアロン配布**: インストーラー形式で簡単配布
+- **録音**: ブラウザ API でマイク音声を録音（WebM/Opus）
+- **文字起こし**: whisper.cpp（base モデル）による日本語音声認識
+- **話者分離**: sherpa-onnx による複数話者の自動識別
+- **AI 整形**: ローカル LLM（Qwen3.5-0.8B）によるノイズ除去・整形
+- **要約生成**: 同 LLM によるストリーミング要約
+- **自動保存**: トランスクリプトを JSON 形式で保存
 
 ## 技術スタック
 
-- **フレームワーク**: Electron.js
-- **ビルド・パッケージ化**:
-  - **Nuitka** - Python コードを Windows .exe にコンパイル
-  - **Electron Forge** - デスクトップアプリのインストーラー生成
-- **録音**: PyAudio
-- **音声処理**: faster-whisper (OpenAI Whisper)
-- **話者分離**: pyannote.audio
-- **要約AI**: Ollama (qwen3.5:0.8b)
-- **UI**: HTML/CSS/JavaScript
+| 役割           | ライブラリ / ツール                          |
+| -------------- | -------------------------------------------- |
+| フレームワーク | Electron v40.8.0 (Node.js 22)                |
+| 音声変換       | FFmpeg（`resources/ffmpeg/ffmpeg.exe`）      |
+| 音声認識       | whisper-node（whisper.cpp ggml-base.bin）    |
+| 話者分離       | sherpa-onnx v1.12.28                         |
+| LLM 推論       | node-llama-cpp v3 + Qwen3.5-0.8B-Q4_K_M.gguf |
+| UI             | HTML / CSS / JavaScript                      |
 
 ## 前提条件
 
-### 開発環境
+- Windows 10 / 11
+- Node.js v22 以上
+- 空きディスク容量: 約 2GB（モデルファイル含む）
 
-- Node.js (v18以上)
-- Python (v3.8以上)
-- pip
-
-### 配布版（ユーザー向け）
-
-- Windows 7以上
-- 十分なディスク容量（インストーラーサイズ: 約500MB～1GB）
-- Ollamaサービス（別途インストール）
+Python・Ollama・Visual C++ Build Tools は**不要**です。
 
 ## セットアップ
 
-### 1. リポジトリのクローン
+### 方法A: setup.bat をダブルクリック（推奨）
 
-```bash
-git clone <repository-url>
-cd realtimetranscript
+```
+setup.bat をダブルクリック
 ```
 
-### 2. 自動セットアップスクリプトの実行
+以下を自動で実行します:
+
+1. Node.js の確認
+2. npm パッケージのインストール（`npm install`）
+3. whisper-node のビルド
+4. Whisper モデルのダウンロード（約 142MB）
+5. whisper.cpp バイナリのダウンロード
+6. FFmpeg のダウンロード・配置（約 200MB）
+7. LLM モデルのダウンロード（約 500MB）
+8. 話者分離モデルのダウンロード（約 45MB）
+9. デスクトップに「議事録アプリ」ショートカットを作成
+
+### 方法B: PowerShell から実行
 
 ```powershell
-.\setup.ps1
+powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-このスクリプトは以下を自動実行します:
+## アプリの起動
 
-- Node.js依存関係のインストール
-- Python仮想環境（venv）の作成
-- Python依存関係のインストール
-- **Nuitka による Python実行ファイルのコンパイル**（オプション）
-- 必要なディレクトリの作成
+セットアップ後はデスクトップの「議事録アプリ」アイコンをダブルクリックするだけです。
 
-### 3. 手動セットアップ（オプション）
-
-上記スクリプトを使わない場合:
+開発時は以下のコマンドを使用します:
 
 ```bash
-# Node.js依存関係
-npm install
-
-# Python仮想環境の作成
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-
-# Python依存関係
-pip install --upgrade pip setuptools wheel
-pip install nuitka zstandard cffi patchelf pyaudio numpy
-pip install faster-whisper pyannote.audio torch torchaudio  # オプション
-
-# Ollamaのインストール
-ollama pull qwen3.5:0.8b
-```
-
-### 4. Ollamaのインストールと設定
-
-1. [Ollama公式サイト](https://ollama.ai/)からOllamaをダウンロード・インストール
-2. qwen3.5:0.8bモデルをダウンロード:
-   ```bash
-   ollama pull qwen3.5:0.8b
-   ```
-3. Ollamaサービスが起動していることを確認:
-   ```bash
-   ollama serve
-   ```
-
-## 使用方法
-
-### 開発モード
-
-```bash
-# 一般的な実行
+# 通常起動
 npm start
 
-# DevToolsを開く
+# DevTools あり
 npm run dev
 ```
 
-### インストーラーの生成（配布向け）
+## 使い方
 
-```bash
-# Windowsインストーラーを生成
-npm run make
+1. **録音開始**
+   - 「録音開始」ボタンをクリック
+   - マイクのアクセス許可を承認
 
-# または、すべてのプラットフォーム
-npm run publish
-```
+2. **話し終えたら録音停止**
+   - 「録音停止」ボタンをクリック
+   - 自動で文字起こし → 話者分離 → AI 整形が実行される
+   - 整形済みトランスクリプトが表示される
 
-生成されたインストーラーは `out/` ディレクトリに配置されます。
-
-### Python実行ファイルのコンパイル（オプション）
-
-Nuitkaを使用して、Python スクリプトを Windows の .exe にコンパイルすることで、ユーザー側での Python インストール不要化:
-
-```bash
-python build.py
-```
-
-コンパイル済みの実行ファイルは `bin/audio_processor.exe` に保存されます。
-
-アプリケーションは自動的にバンドル済みの .exe を検出し、使用します。
+3. **要約生成**
+   - 「要約生成」ボタンをクリック
+   - LLM がストリーミングで要約を生成
 
 ## ディレクトリ構造
 
 ```
 realtimetranscript/
-├── main.js                    # Electronメインプロセス
-├── preload.js                 # セキュアなIPC通信
-├── index.html                 # UIのHTML
-├── styles.css                 # UIのスタイル
-├── renderer.js                # UIのロジック
-├── audio_processor_standalone.py  # 音声処理（Nuitka対応）
-├── audio_processor.py         # 音声処理（参照用）
-├── build.py                   # Nuitkaビルドスクリプト
-├── forge.config.js            # Electron Forge設定
-├── setup.ps1                  # 自動セットアップスクリプト
-├── package.json               # Node.js依存関係
-├── requirements.txt           # Python依存関係
-├── venv/                      # Python仮想環境
-├── bin/                       # コンパイル済み実行ファイル
-├── recordings/                # 録音ファイル保存先
-├── transcripts/               # トランスクリプト保存先
-└── out/                       # ビルド出力（インストーラーなど）
+├── main.js              # Electron メインプロセス（音声処理・LLM 推論）
+├── preload.js           # IPC 通信ブリッジ
+├── index.html           # UI
+├── styles.css           # スタイル
+├── renderer.js          # UI ロジック
+├── setup.ps1            # セットアップスクリプト
+├── setup.bat            # セットアップ起動用バッチ
+├── start.bat            # アプリ起動用バッチ
+├── start.vbs            # コマンドプロンプト非表示で起動
+├── package.json         # npm 設定
+├── models/
+│   ├── Qwen3.5-0.8B-Q4_K_M.gguf    # LLM モデル（~500MB）
+│   └── diarization/
+│       ├── segmentation.onnx         # 話者セグメンテーション（~6MB）
+│       └── embedding.onnx            # 話者埋め込み（~38MB）
+└── resources/
+    └── ffmpeg/
+        └── ffmpeg.exe                # FFmpeg バイナリ
 ```
 
-## 基本的な使い方
+## 処理フロー
 
-1. **録音開始**:
-   - 「録音開始」ボタンをクリック
-   - マイクへのアクセス許可を承認
-   - 会議を開始
-
-2. **リアルタイム表示**:
-   - 音声が自動的に文字起こしされ、画面に表示されます
-   - 話者ごとに識別して表示されます
-
-3. **録音停止**:
-   - 「録音停止」ボタンをクリック
-   - トランスクリプトが自動的に保存されます
-
-4. **要約生成**:
-   - 「要約生成」ボタンをクリック
-   - AIが会議内容を要約します
-   - 要約をコピーして他のアプリケーションで使用できます
+```
+録音（WebM/Opus）
+  ↓ FFmpeg
+WAV（16kHz / 16bit / Mono）
+  ↓ whisper.cpp
+テキスト + タイムスタンプ
+  ↓ sherpa-onnx
+話者ラベル付きセグメント
+  ↓ node-llama-cpp (Qwen3.5)
+整形済みトランスクリプト
+  ↓ 自動保存
+JSON（userData/transcripts/）
+```
 
 ## トラブルシューティング
 
-### 文字化けメッセージが表示される（PyAudio や faster-whisper 関連）
+### 文字起こしが始まらない
 
-**症状**: 以下のような文字化けメッセージが表示される
+- `resources/ffmpeg/ffmpeg.exe` が存在するか確認
+- システムの PATH に ffmpeg があれば代替として使用される
 
-```
-Python Error: ・ｽx・ｽ・ｽ: PyAudio ・ｽ・ｽ・ｽC...
-```
+### LLM 整形エラー
 
-**原因**: Windows PowerShell のコンソールエンコーディングが Shift_JIS になっている
+- `models/Qwen3.5-0.8B-Q4_K_M.gguf` が存在するか確認（約 500MB）
+- ファイルが壊れている場合は `setup.bat` を再実行
 
-**対応方法**:
+### 話者分離がスキップされる
 
-```powershell
-# PowerShell で最初に実行：
-chcp 65001
-
-# その後、キャッシュをクリアして再インストール：
-pip cache purge
-pip install --force-reinstall -r requirements.txt
-```
+- `models/diarization/segmentation.onnx` と `embedding.onnx` が両方存在するか確認
+- `setup.bat` を再実行してダウンロード
 
 ### マイクが認識されない
 
-- Windowsの設定でマイクのアクセス許可を確認
-- デバイスマネージャーでマイクが正常に動作しているか確認
-
-### PyAudioのインストールエラー
-
-```bash
-pip install pipwin
-pipwin install pyaudio
-```
-
-### Ollamaに接続できない
-
-- Ollamaサービスが起動しているか確認: `ollama serve`
-- ファイアウォール設定を確認
-- デフォルトポート (11434) が使用可能か確認
-
-### Nuitkaコンパイルエラー
-
-- MinGW-w64 が必要な場合があります
-- `pip install nuitka` で最新版にアップグレード
-- `pyinstaller` を代替案として使用
-
-## ビルドプロセス説明
-
-### 1. 開発フェーズ
-
-```
-Python スクリプト → Electron + Node.js → ローカル実行
-```
-
-### 2. ビルドフェーズ
-
-```
-Python スクリプト
-  ↓
-Nuitka コンパイル → audio_processor.exe
-  ↓
-Electron Forge パッケージ化
-  ↓
-Windows インストーラー (.exe / .msi)
-```
-
-### 3. ユーザー配布
-
-```
-インストーラーを実行
-  ↓
-スタンドアロンアプリをインストール
-  ↓
-Python / Node.js 不要で直接実行 ✓
-```
+- Windows 設定 → プライバシー → マイク → アプリのアクセスを許可
 
 ## ライセンス
 
 MIT License
-
-## 今後の改善予定
-
-- [ ] リアルタイムストリーミング処理の実装
-- [ ] より正確な話者分離アルゴリズム
-- [ ] マルチ言語対応
-- [ ] クラウドストレージへの自動バックアップ
-- [ ] カスタムLLMモデルのサポート
-- [ ] Linux/Mac版のサポート
-
-## 貢献
-
-プルリクエストは歓迎します。大きな変更の場合は、まずissueを開いて変更内容を議論してください。
-
-## サポート
-
-問題が発生した場合は、GitHubのIssuesセクションに報告してください。
