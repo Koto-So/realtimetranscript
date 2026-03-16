@@ -1,7 +1,10 @@
 <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-  <!-- Stopped State Dot (Solid Gray) -->
-  <circle cx="100" cy="80" r="15" fill="#666666" />
-
-  <!-- "STOPPED" or "READY" Text -->
-  <text x="100" y="130" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#666666" text-anchor="middle">STOP</text>
+  <!-- Mic body -->
+  <rect x="78" y="36" width="44" height="78" rx="22" fill="white"/>
+  <!-- Mic stand arc -->
+  <path d="M50 108 Q50 162 100 162 Q150 162 150 108" stroke="white" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <!-- Pole -->
+  <line x1="100" y1="162" x2="100" y2="180" stroke="white" stroke-width="9" stroke-linecap="round"/>
+  <!-- Base -->
+  <line x1="70" y1="180" x2="130" y2="180" stroke="white" stroke-width="9" stroke-linecap="round"/>
 </svg>

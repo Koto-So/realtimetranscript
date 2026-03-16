@@ -1,13 +1,18 @@
 <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-  <!-- Recording Red Dot with Pulsing Animation -->
-  <circle cx="100" cy="80" r="15" fill="#ff4d4d">
-    <animate 
-      attributeName="opacity" 
-      values="1;0.2;1" 
-      dur="2s" 
-      repeatCount="indefinite" />
+  <!-- Outer pulsing ring -->
+  <circle cx="100" cy="100" r="40" fill="none" stroke="#ff4d4d" stroke-width="3">
+    <animate attributeName="r" values="40;72" dur="1.6s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.6;0" dur="1.6s" repeatCount="indefinite"/>
   </circle>
-
-  <!-- "REC" Text -->
-  <text x="100" y="130" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ff4d4d" text-anchor="middle">REC</text>
+  <!-- Inner pulsing ring -->
+  <circle cx="100" cy="100" r="40" fill="none" stroke="#ff4d4d" stroke-width="3">
+    <animate attributeName="r" values="40;56" dur="1.6s" begin="0.4s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.6;0" dur="1.6s" begin="0.4s" repeatCount="indefinite"/>
+  </circle>
+  <!-- Core dot -->
+  <circle cx="100" cy="100" r="32" fill="#ff4d4d">
+    <animate attributeName="r" values="32;28;32" dur="1.6s" repeatCount="indefinite"/>
+  </circle>
+  <!-- REC label -->
+  <text x="100" y="106" font-family="Arial, sans-serif" font-size="16" font-weight="900" fill="white" text-anchor="middle" letter-spacing="2">REC</text>
 </svg>

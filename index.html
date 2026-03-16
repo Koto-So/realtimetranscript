@@ -17,22 +17,64 @@
       </header>
 
       <div class="controls">
-        <button id="startBtn" class="btn btn-primary">
-          <img
-            id="recordingSvg"
-            src="resources/svg/recording_stop.svg"
-            alt="録音状態"
-            class="btn-svg"
-          />
-          録音開始
-        </button>
-        <button id="stopBtn" class="btn btn-danger" disabled>録音停止</button>
-        <button id="formatBtn" class="btn btn-warning" disabled>AI整形</button>
-        <button id="summaryBtn" class="btn btn-success" disabled>
-          要約生成
-        </button>
-        <button id="clearBtn" class="btn btn-small">クリア</button>
-        <button id="copyBtn" class="btn btn-small" disabled>コピー</button>
+        <!-- 録音開始 -->
+        <div class="circle-btn-wrap">
+          <button id="startBtn" class="btn-circle">
+            <img id="recordingSvg" src="resources/svg/recording_stop.svg" alt="録音状態" class="btn-record-svg" />
+          </button>
+          <span class="circle-label">録音開始</span>
+        </div>
+        <!-- 録音停止 -->
+        <div class="circle-btn-wrap">
+          <button id="stopBtn" class="btn-circle" disabled>
+            <svg viewBox="0 0 24 24" width="30" height="30"><rect x="5" y="5" width="14" height="14" rx="2.5" fill="white"/></svg>
+          </button>
+          <span class="circle-label">停止</span>
+        </div>
+        <!-- AI整形 -->
+        <div class="circle-btn-wrap">
+          <button id="formatBtn" class="btn-circle" disabled>
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="white">
+              <path d="M12 2l1.4 4.2L18 8l-4.6 1.8L12 14l-1.4-4.2L6 8l4.6-1.8L12 2z"/>
+              <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" opacity=".7"/>
+              <path d="M5 18l.5 1.5L7 20l-1.5.5L5 22l-.5-1.5L3 20l1.5-.5L5 18z" opacity=".5"/>
+            </svg>
+          </button>
+          <span class="circle-label">AI整形</span>
+        </div>
+        <!-- 要約生成 -->
+        <div class="circle-btn-wrap">
+          <button id="summaryBtn" class="btn-circle" disabled>
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="2" width="16" height="20" rx="2"/>
+              <line x1="8" y1="7" x2="16" y2="7"/>
+              <line x1="8" y1="11" x2="16" y2="11"/>
+              <line x1="8" y1="15" x2="13" y2="15"/>
+            </svg>
+          </button>
+          <span class="circle-label">要約</span>
+        </div>
+        <!-- クリア -->
+        <div class="circle-btn-wrap">
+          <button id="clearBtn" class="btn-circle btn-circle-sm">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+              <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+            </svg>
+          </button>
+          <span class="circle-label">クリア</span>
+        </div>
+        <!-- コピー -->
+        <div class="circle-btn-wrap">
+          <button id="copyBtn" class="btn-circle btn-circle-sm" disabled>
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+            </svg>
+          </button>
+          <span class="circle-label">コピー</span>
+        </div>
       </div>
 
       <div
