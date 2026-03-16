@@ -1,0 +1,7 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Stopped State Dot (Solid Gray) -->
+  <circle cx="100" cy="80" r="15" fill="#666666" />
+
+  <!-- "STOPPED" or "READY" Text -->
+  <text x="100" y="130" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#666666" text-anchor="middle">STOP</text>
+</svg>

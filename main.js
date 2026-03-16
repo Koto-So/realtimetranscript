@@ -161,6 +161,8 @@ async function convertToWav(inputPath, outputPath) {
       "16000",
       "-ac",
       "1",
+      "-af",
+      "highpass=f=80,lowpass=f=8000,afftdn=nf=-25",
       "-c:a",
       "pcm_s16le",
       outputPath,
@@ -280,7 +282,7 @@ function getDiarizationModelPath() {
   return null;
 }
 
-// sherpa-onnx による話者分離
+// sherpa-onnx による話者分離 (子プロセスで実行して WASM クラッシュを隔離)
 async function diarizeAudio(wavPath) {
   const models = getDiarizationModelPath();
   if (!models) {
@@ -288,60 +290,84 @@ async function diarizeAudio(wavPath) {
     return null;
   }
 
-  try {
-    const SherpaOnnx = require("sherpa-onnx");
+  console.log("[DIAR] 話者分離開始 (子プロセス):", wavPath);
 
-    console.log("[DIAR] 話者分離開始:", wavPath);
-    console.log("[DIAR] segmentation:", models.segmentation);
-    console.log("[DIAR] embedding:", models.embedding);
+  return new Promise((resolve) => {
+    const { spawn } = require("child_process");
+    const workerPath = path.join(__dirname, "diarize-worker.js");
+    const nodeBin = process.execPath; // 現在の node バイナリのパス
 
-    const sd = SherpaOnnx.createOfflineSpeakerDiarization({
-      segmentation: {
-        pyannote: { model: models.segmentation },
-        numThreads: 2,
-        debug: 0,
-        provider: "cpu",
-      },
-      embedding: {
-        model: models.embedding,
-        numThreads: 2,
-        debug: 0,
-        provider: "cpu",
-      },
-      clustering: {
-        numClusters: -1, // -1 = 自動検出
-        threshold: 0.5,
-      },
-      minDurationOn: 0.3,
-      minDurationOff: 0.5,
+    const args = JSON.stringify({
+      segModel: models.segmentation,
+      embModel: models.embedding,
+      wavPath,
     });
 
-    const wave = SherpaOnnx.readWave(wavPath);
-    if (!wave || !wave.samples) {
-      console.warn("[DIAR] WAV 読み込み失敗");
-      return null;
-    }
+    const worker = spawn(nodeBin, [workerPath, args], {
+      cwd: __dirname,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
-    const result = sd.process(wave.samples);
+    let stdoutBuf = "";
+    let resolved = false;
+    const finish = (val) => {
+      if (!resolved) {
+        resolved = true;
+        resolve(val);
+      }
+    };
 
-    if (sd.free) sd.free();
+    worker.stdout.on("data", (d) => {
+      stdoutBuf += d.toString();
+    });
 
-    if (!result || !Array.isArray(result)) {
-      console.warn("[DIAR] 話者分離結果が空です");
-      return null;
-    }
+    worker.stderr.on("data", (d) => {
+      // ONNX の debug ログを除き重要なメッセージだけ出力
+      const line = d.toString().trim();
+      if (line && !line.includes("sherpa-onnx/sherpa-onnx")) {
+        console.log("[DIAR-worker]", line);
+      }
+    });
 
-    console.log(`[DIAR] 話者分離完了: ${result.length} セグメント`);
+    worker.on("close", (code) => {
+      const lastLine = stdoutBuf.trim().split("\n").pop() || "";
+      try {
+        const msg = JSON.parse(lastLine);
+        if (msg.error) {
+          console.error("[DIAR] エラー:", msg.error);
+          finish(null);
+        } else if (Array.isArray(msg.segments)) {
+          console.log(
+            "[DIAR] 話者分離完了:",
+            msg.segments.length,
+            "セグメント",
+          );
+          finish(msg.segments.length > 0 ? msg.segments : null);
+        } else {
+          finish(null);
+        }
+      } catch (_) {
+        if (code !== 0) {
+          console.error("[DIAR] 子プロセス異常終了 (code=" + code + ")");
+        }
+        finish(null);
+      }
+    });
 
-    return result.map((seg) => ({
-      start: seg.start,
-      end: seg.end,
-      speaker: seg.speaker, // alignSpeakers 側で +1 するため 0-indexed のまま
-    }));
-  } catch (e) {
-    console.error("[DIAR] 話者分離エラー:", e.message || e);
-    return null;
-  }
+    worker.on("error", (e) => {
+      console.error("[DIAR] spawn エラー:", e.message);
+      finish(null);
+    });
+
+    // 2分タイムアウト
+    setTimeout(() => {
+      if (!resolved) {
+        console.error("[DIAR] タイムアウト (2分)");
+        worker.kill();
+        finish(null);
+      }
+    }, 120000);
+  });
 }
 
 // whisper のタイムスタンプ付きセグメントと話者分離結果をアライメント
@@ -489,11 +515,7 @@ ipcMain.handle(
       });
       const diarSegments = await diarizeAudio(tmpWav);
       const segments = alignSpeakers(whisperSegments, diarSegments);
-      mainWindow.webContents.send("status-update", {
-        message: "テキストを整形中...",
-        type: "info",
-      });
-      const formatted = await formatWithLLM(segments);
+      // AI整形はボタン押下時に実行するため、ここでは行わない
       // asar 内は書き込み不可のため userData に保存する
       const transcriptsDir = path.join(app.getPath("userData"), "transcripts");
       fs.mkdirSync(transcriptsDir, { recursive: true });
@@ -504,13 +526,13 @@ ipcMain.handle(
       fs.writeFileSync(
         outFile,
         JSON.stringify(
-          { segments, formatted, createdAt: new Date().toISOString() },
+          { segments, formatted: null, createdAt: new Date().toISOString() },
           null,
           2,
         ),
         "utf-8",
       );
-      return { success: true, segments, formatted, filePath: outFile };
+      return { success: true, segments, filePath: outFile };
     } catch (e) {
       console.error("音声処理エラー:", e);
       return { success: false, message: e.message };
@@ -524,6 +546,21 @@ ipcMain.handle(
     }
   },
 );
+
+// AI整形ハンドラ: セグメントを受け取り LLM で整形して返す
+ipcMain.handle("format-transcript", async (event, segments) => {
+  try {
+    mainWindow.webContents.send("status-update", {
+      message: "AI整形中...",
+      type: "info",
+    });
+    const formatted = await formatWithLLM(segments);
+    return { success: true, formatted };
+  } catch (e) {
+    console.error("AI整形エラー:", e);
+    return { success: false, message: e.message };
+  }
+});
 
 ipcMain.handle("generate-summary", async (event, transcriptText) => {
   try {

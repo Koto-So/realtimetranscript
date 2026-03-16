@@ -176,38 +176,21 @@ if (Test-Path $ffmpegExe) {
 # ----------------------------------------------------------
 Write-Step "LLM モデル (GGUF) を確認中..."
 
-$modelsDir  = Join-Path $AppDir "models"
-$ggufFile   = "Qwen3.5-0.8B-Q4_K_M.gguf"
-$ggufPath   = Join-Path $modelsDir $ggufFile
-
+$modelsDir = Join-Path $AppDir "models"
 New-Item -ItemType Directory -Path $modelsDir -Force | Out-Null
 
-if (Test-Path $ggufPath) {
-    $sizeMB = [math]::Round((Get-Item $ggufPath).Length / 1MB, 1)
-    Write-OK "GGUF モデル確認済み ($sizeMB MB)"
-} else {
-    Write-Warn "GGUF モデルが見つかりません。ダウンロードします（約 500MB）..."
-    $ggufUrl = "https://huggingface.co/Qwen/Qwen3-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf"
-    try {
-        # curl -L でリダイレクトに追従しながらダウンロード
-        $curlCmd = Get-Command curl.exe -ErrorAction SilentlyContinue
-        if ($curlCmd) {
-            Write-Host "  curl でダウンロード中... (約 500MB)" -ForegroundColor Gray
-            curl.exe -L --progress-bar -o $ggufPath $ggufUrl
-            if ($LASTEXITCODE -ne 0) { throw "curl 失敗 (exit code: $LASTEXITCODE)" }
-        } else {
-            # curl がない場合は Invoke-WebRequest にフォールバック
-            Write-Host "  Invoke-WebRequest でダウンロード中... (約 500MB)" -ForegroundColor Gray
-            Invoke-WebRequest -Uri $ggufUrl -OutFile $ggufPath -UseBasicParsing
-        }
-        $sizeMB = [math]::Round((Get-Item $ggufPath).Length / 1MB, 1)
-        Write-OK "GGUF モデルのダウンロード完了 ($sizeMB MB)"
-    } catch {
-        Write-Err "GGUF モデルのダウンロードに失敗しました: $_"
-        Write-Host "  手動でダウンロードして以下へ配置してください:" -ForegroundColor Yellow
-        Write-Host "  $ggufPath" -ForegroundColor Yellow
-        Write-Host "  ダウンロード先: https://huggingface.co/Qwen/Qwen3-0.8B-GGUF" -ForegroundColor Yellow
+$downloadScript = Join-Path $AppDir "download-models.js"
+if (Test-Path $downloadScript) {
+    Write-Host "  download-models.js を実行中..." -ForegroundColor Gray
+    node "$downloadScript"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "モデルのダウンロードに失敗しました (exit code: $LASTEXITCODE)"
+        Write-Host "  手動で実行: node download-models.js" -ForegroundColor Yellow
+    } else {
+        Write-OK "GGUF モデルの確認/ダウンロード完了"
     }
+} else {
+    Write-Err "download-models.js が見つかりません: $downloadScript"
 }
 
 # ----------------------------------------------------------

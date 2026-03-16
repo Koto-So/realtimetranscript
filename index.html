@@ -9,8 +9,8 @@
   <body>
     <div class="container">
       <header>
-        <h1>🎤 ミーティングトランスクリプト</h1>
-        <p class="subtitle">録音 → 文字起こし → AI整形・要約 (完全ローカル)</p>
+        <h1>ミーティングトランスクリプト</h1>
+        <p class="subtitle">録音 → 文字起こし → AI整形・要約（完全ローカル）</p>
         <div id="ollamaStatus" class="ollama-status checking">
           Ollama 確認中...
         </div>
@@ -18,13 +18,18 @@
 
       <div class="controls">
         <button id="startBtn" class="btn btn-primary">
-          <span class="icon">⏺</span> 録音開始
+          <img
+            id="recordingSvg"
+            src="resources/svg/recording_stop.svg"
+            alt="録音状態"
+            class="btn-svg"
+          />
+          録音開始
         </button>
-        <button id="stopBtn" class="btn btn-danger" disabled>
-          <span class="icon">⏹</span> 録音停止・解析
-        </button>
+        <button id="stopBtn" class="btn btn-danger" disabled>録音停止</button>
+        <button id="formatBtn" class="btn btn-warning" disabled>AI整形</button>
         <button id="summaryBtn" class="btn btn-success" disabled>
-          <span class="icon">✨</span> 要約生成
+          要約生成
         </button>
         <button id="clearBtn" class="btn btn-small">クリア</button>
         <button id="copyBtn" class="btn btn-small" disabled>コピー</button>
@@ -47,7 +52,7 @@
       <div class="main-content">
         <div class="card">
           <div class="section-header">
-            <h2>📝 文字起こし（AI整形）</h2>
+            <h2>文字起こし</h2>
           </div>
           <div id="transcriptArea" class="content-area">
             <p class="placeholder">
@@ -58,7 +63,7 @@
 
         <div class="card">
           <div class="section-header">
-            <h2>📋 要約</h2>
+            <h2>要約</h2>
           </div>
           <div id="summaryArea" class="content-area">
             <p class="placeholder">
@@ -69,7 +74,7 @@
       </div>
 
       <div class="history-section">
-        <h3>📂 過去の録音</h3>
+        <h3>過去の録音</h3>
         <div id="transcriptsList" class="list-container">
           <p class="placeholder">まだ録音がありません。</p>
         </div>

@@ -1,6 +1,7 @@
 ﻿// ===== DOM 要素 =====
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
+const formatBtn = document.getElementById("formatBtn");
 const summaryBtn = document.getElementById("summaryBtn");
 const clearBtn = document.getElementById("clearBtn");
 const copyBtn = document.getElementById("copyBtn");
@@ -12,6 +13,7 @@ const transcriptsList = document.getElementById("transcriptsList");
 const waveformContainer = document.getElementById("waveformContainer");
 const waveformCanvas = document.getElementById("waveformCanvas");
 const recordingTimeEl = document.getElementById("recordingTime");
+const recordingSvg = document.getElementById("recordingSvg");
 const ollamaStatusEl = document.getElementById("ollamaStatus");
 
 // ===== 状態 =====
@@ -24,6 +26,7 @@ let animFrameId = null;
 let recordingStartTime = null;
 let timerInterval = null;
 let currentFormattedText = "";
+let currentRawSegments = null;
 
 // ===== LLM モデル状態確認 =====
 async function checkOllama() {
@@ -95,6 +98,7 @@ startBtn.addEventListener("click", async () => {
     startBtn.disabled = true;
     stopBtn.disabled = false;
     waveformContainer.style.display = "flex";
+    recordingSvg.src = "resources/svg/recording_doing.svg";
     setStatus("録音中...", "recording");
 
     // タイマー
@@ -105,12 +109,14 @@ startBtn.addEventListener("click", async () => {
     drawWaveform();
 
     transcriptArea.innerHTML =
-      '<p class="placeholder loading-dots">録音中です。停止ボタンを押すと解析を開始します</p>';
+      '<p class="placeholder loading-dots">録音中です。停止ボタンを押すと文字起こしを開始します</p>';
     summaryArea.innerHTML =
-      '<p class="placeholder">文字起こし後に「要約生成」ボタンをクリックしてください。</p>';
+      '<p class="placeholder">文字起こし後にAI整形→要約の順に実行できます。</p>';
+    formatBtn.disabled = true;
     summaryBtn.disabled = true;
     copyBtn.disabled = true;
     currentFormattedText = "";
+    currentRawSegments = null;
   } catch (e) {
     setStatus("マイクへのアクセスが拒否されました: " + e.message, "error");
     showToast("マイクの使用を許可してください", "error");
@@ -130,6 +136,7 @@ stopBtn.addEventListener("click", async () => {
   clearInterval(timerInterval);
   cancelAnimationFrame(animFrameId);
   waveformContainer.style.display = "none";
+  recordingSvg.src = "resources/svg/recording_stop.svg";
   if (audioContext) {
     audioContext.close();
     audioContext = null;
@@ -153,10 +160,10 @@ stopBtn.addEventListener("click", async () => {
   startBtn.disabled = false;
 
   if (result.success) {
-    currentFormattedText = result.formatted;
-    displayTranscript(result.segments, result.formatted);
-    summaryBtn.disabled = false;
-    setStatus("解析完了", "success");
+    currentRawSegments = result.segments;
+    displayRawSegments(result.segments);
+    formatBtn.disabled = false;
+    setStatus("文字起こし完了 — AI整形ボタンで整形できます", "success");
     showToast("文字起こし完了！", "success");
     loadHistory();
   } else {
@@ -223,6 +230,60 @@ function displayTranscript(segments, formatted) {
   transcriptArea.scrollTop = 0;
 }
 
+// ===== 生セグメント表示 (AI整形前) =====
+function displayRawSegments(segments) {
+  transcriptArea.innerHTML = "";
+  if (!segments || segments.length === 0) {
+    transcriptArea.innerHTML =
+      '<p class="placeholder">テキストが認識されませんでした。</p>';
+    return;
+  }
+  const div = document.createElement("div");
+  div.className = "formatted-transcript";
+  segments.forEach((seg) => {
+    const text = (seg.text || seg.speech || "").trim();
+    if (!text) return;
+    const p = document.createElement("p");
+    p.className = "speaker-line";
+    const spanLabel = document.createElement("span");
+    spanLabel.className = "speaker-label";
+    spanLabel.textContent = `話者${seg.speaker || 1}: `;
+    const spanText = document.createElement("span");
+    spanText.className = "speaker-text";
+    spanText.textContent = text;
+    p.appendChild(spanLabel);
+    p.appendChild(spanText);
+    div.appendChild(p);
+  });
+  transcriptArea.appendChild(div);
+  transcriptArea.scrollTop = 0;
+}
+
+// ===== AI整形 =====
+formatBtn.addEventListener("click", async () => {
+  if (!currentRawSegments) return;
+  formatBtn.disabled = true;
+  setStatus("AI整形中...", "processing");
+  transcriptArea.innerHTML =
+    '<p class="placeholder loading-dots">AIがテキストを整形中...しばらくお待ちください</p>';
+
+  const result = await window.electronAPI.formatTranscript(currentRawSegments);
+
+  formatBtn.disabled = false;
+  if (result.success) {
+    currentFormattedText = result.formatted;
+    displayTranscript(currentRawSegments, result.formatted);
+    summaryBtn.disabled = false;
+    copyBtn.disabled = false;
+    setStatus("AI整形完了", "success");
+    showToast("AI整形完了！", "success");
+  } else {
+    displayRawSegments(currentRawSegments);
+    setStatus("AI整形エラー", "error");
+    showToast(result.message || "AI整形に失敗しました", "error");
+  }
+});
+
 // ===== 要約生成 =====
 summaryBtn.addEventListener("click", async () => {
   if (!currentFormattedText) return;
@@ -250,10 +311,12 @@ clearBtn.addEventListener("click", () => {
     transcriptArea.innerHTML =
       '<p class="placeholder">録音を停止すると、ここに文字起こし結果が表示されます。</p>';
     summaryArea.innerHTML =
-      '<p class="placeholder">文字起こし後に「要約生成」ボタンをクリックしてください。</p>';
+      '<p class="placeholder">文字起こし後にAI整形→要約の順に実行できます。</p>';
+    formatBtn.disabled = true;
     summaryBtn.disabled = true;
     copyBtn.disabled = true;
     currentFormattedText = "";
+    currentRawSegments = null;
   }
 });
 

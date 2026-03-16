@@ -1,8 +1,11 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
-  // 音声データを送信してWhisper + LLM処理
+  // 音声データを送信してWhisper + 話者分離 (LLM整形なし)
   processAudio: (data) => ipcRenderer.invoke("process-audio", data),
+  // AI整形 (セグメント → LLM整形テキスト)
+  formatTranscript: (segments) =>
+    ipcRenderer.invoke("format-transcript", segments),
   // 要約生成
   generateSummary: (text) => ipcRenderer.invoke("generate-summary", text),
   // 過去の録音一覧

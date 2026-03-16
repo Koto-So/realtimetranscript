@@ -1,0 +1,13 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Recording Red Dot with Pulsing Animation -->
+  <circle cx="100" cy="80" r="15" fill="#ff4d4d">
+    <animate 
+      attributeName="opacity" 
+      values="1;0.2;1" 
+      dur="2s" 
+      repeatCount="indefinite" />
+  </circle>
+
+  <!-- "REC" Text -->
+  <text x="100" y="130" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ff4d4d" text-anchor="middle">REC</text>
+</svg>
