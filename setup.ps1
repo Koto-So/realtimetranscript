@@ -5,6 +5,12 @@
 #           または: powershell -ExecutionPolicy Bypass -File setup.ps1
 # =============================================================
 
+# コンソール出力を UTF-8 に統一（文字化け防止）
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+$OutputEncoding           = [System.Text.Encoding]::UTF8
+chcp 65001 | Out-Null
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -172,33 +178,11 @@ if (Test-Path $ffmpegExe) {
 }
 
 # ----------------------------------------------------------
-# 8. GGUF モデルのダウンロード
-# ----------------------------------------------------------
-Write-Step "LLM モデル (GGUF) を確認中..."
-
-$modelsDir = Join-Path $AppDir "models"
-New-Item -ItemType Directory -Path $modelsDir -Force | Out-Null
-
-$downloadScript = Join-Path $AppDir "download-models.js"
-if (Test-Path $downloadScript) {
-    Write-Host "  download-models.js を実行中..." -ForegroundColor Gray
-    node "$downloadScript"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Err "モデルのダウンロードに失敗しました (exit code: $LASTEXITCODE)"
-        Write-Host "  手動で実行: node download-models.js" -ForegroundColor Yellow
-    } else {
-        Write-OK "GGUF モデルの確認/ダウンロード完了"
-    }
-} else {
-    Write-Err "download-models.js が見つかりません: $downloadScript"
-}
-
-# ----------------------------------------------------------
-# 9. 話者分離モデルのダウンロード (sherpa-onnx)
+# 8. 話者分離モデルのダウンロード (sherpa-onnx)
 # ----------------------------------------------------------
 Write-Step "話者分離モデルを確認中..."
 
-$diarDir  = Join-Path $modelsDir "diarization"
+$diarDir  = Join-Path $AppDir "models\diarization"
 $segModel = Join-Path $diarDir "segmentation.onnx"
 $embModel = Join-Path $diarDir "embedding.onnx"
 
@@ -253,7 +237,7 @@ if ($diarOk) {
 }
 
 # ----------------------------------------------------------
-# 10. デスクトップショートカット作成
+# 9. デスクトップショートカット作成
 # ----------------------------------------------------------
 Write-Step "デスクトップショートカットを作成中..."
 
@@ -291,10 +275,17 @@ Write-Host @"
   デスクトップの「議事録アプリ」アイコンをダブルクリック
   または: npm start
 
-  【補足】
-  - LLM は node-llama-cpp で直接 GGUF モデルを実行します
-    （Ollama は不要です）
-  - GGUF モデル: models/$ggufFile
+  【重要】LLM モデル (GGUF) を手動でダウンロードしてください
+  -------------------------------------------------------
+  以下のリンクから Qwen3.5-0.8B-Q4_K_M.gguf をダウンロードし、
+  models フォルダ内に配置してください。
+
+  ダウンロード先:
+  https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/tree/main?show_file_info=Qwen3.5-0.8B-Q4_K_M.gguf
+
+  配置先: $AppDir\models\Qwen3.5-0.8B-Q4_K_M.gguf
+  -------------------------------------------------------
+
   - モデルは初回起動時に自動で読み込まれます（数秒〜数十秒）
 
 "@ -ForegroundColor Green
