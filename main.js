@@ -152,6 +152,30 @@ function getFfmpegPath() {
 
 async function convertToWav(inputPath, outputPath) {
   const ffmpeg = getFfmpegPath();
+
+  // ffmpeg バージョンに応じて使用可能なフィルタを自動選択
+  function getAudioFilter() {
+    try {
+      const result = require("child_process").spawnSync(ffmpeg, ["-filters"], {
+        encoding: "utf8",
+        timeout: 5000,
+      });
+      const out = (result.stdout || "") + (result.stderr || "");
+      if (out.includes("afftdn")) {
+        console.log("[FFMPEG] フィルタ: afftdn (スペクトル減算ノイズ除去)");
+        return "highpass=f=80,lowpass=f=8000,afftdn=nf=-25";
+      } else if (out.includes("anlmdn")) {
+        console.log("[FFMPEG] フィルタ: anlmdn (非局所平均ノイズ除去)");
+        return "highpass=f=80,lowpass=f=8000,anlmdn";
+      } else {
+        console.log("[FFMPEG] フィルタ: 基本のみ (古いffmpeg検出)");
+        return "highpass=f=80,lowpass=f=8000";
+      }
+    } catch (_) {
+      return "highpass=f=80,lowpass=f=8000";
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const args = [
       "-y",
@@ -162,7 +186,7 @@ async function convertToWav(inputPath, outputPath) {
       "-ac",
       "1",
       "-af",
-      "highpass=f=80,lowpass=f=8000,afftdn=nf=-25",
+      getAudioFilter(),
       "-c:a",
       "pcm_s16le",
       outputPath,

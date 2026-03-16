@@ -48,8 +48,12 @@ try {
 # 2. npm install
 # ----------------------------------------------------------
 Write-Step "npm パッケージをインストール中..."
-npm install --ignore-scripts 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
+$prev = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+npm install --loglevel=error 2>$null | Out-Null
+$npmExit = $LASTEXITCODE
+$ErrorActionPreference = $prev
+if ($npmExit -ne 0) {
     Write-Err "npm install に失敗しました。"
     exit 1
 }
@@ -59,8 +63,12 @@ Write-OK "npm パッケージのインストール完了"
 # 3. whisper-node ネイティブビルド
 # ----------------------------------------------------------
 Write-Step "whisper-node をビルド中..."
-npm rebuild whisper-node 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
+$prev = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+npm rebuild whisper-node --loglevel=error 2>$null | Out-Null
+$rebuildExit = $LASTEXITCODE
+$ErrorActionPreference = $prev
+if ($rebuildExit -ne 0) {
     Write-Warn "whisper-node のビルドに失敗しました（Visual C++ Build Tools が必要な場合があります）"
 } else {
     Write-OK "whisper-node ビルド完了"
@@ -137,14 +145,12 @@ Write-OK "resources フォルダを作成しました"
 Write-Step "FFmpeg を確認中..."
 
 $ffmpegExe = Join-Path $ffmpegDir "ffmpeg.exe"
-$sysFfmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
 
 if (Test-Path $ffmpegExe) {
     $sizeMB = [math]::Round((Get-Item $ffmpegExe).Length / 1MB, 1)
     Write-OK "FFmpeg バイナリ: 配置済み ($sizeMB MB)"
-} elseif ($sysFfmpeg) {
-    Write-OK "システムの FFmpeg を使用: $($sysFfmpeg.Source)"
 } else {
+    # システムの ffmpeg は古い可能性があるため、必ず resources/ffmpeg に新しいバイナリを配置する
     Write-Warn "FFmpeg が見つかりません。ダウンロードします（約 200MB）..."
     $ffmpegZipUrl  = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
     $ffmpegZip     = Join-Path $env:TEMP "ffmpeg.zip"
