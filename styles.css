@@ -98,6 +98,7 @@ header h1 {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease;
@@ -130,10 +131,34 @@ header h1 {
 
 /* 円形内SVG画像 */
 .btn-record-svg {
-  width: 46px;
-  height: 46px;
+  width: 30px;
+  height: 30px;
   object-fit: contain;
   pointer-events: none;
+  transition:
+    width 0.2s ease,
+    height 0.2s ease;
+}
+
+/* 録音中: SVGを大きく表示 */
+#startBtn.btn-recording .btn-record-svg {
+  width: 90px;
+  height: 90px;
+}
+
+/* 録音開始ボタン: 通常時は黒円形ボタン */
+#startBtn {
+  overflow: visible;
+}
+
+/* 録音中: 黒背景を消してSVGのみ表示 */
+#startBtn.btn-recording {
+  background: transparent;
+  box-shadow: none;
+}
+#startBtn.btn-recording:hover:not(:disabled) {
+  background: transparent;
+  box-shadow: none;
 }
 
 /* ボタン下ラベル */

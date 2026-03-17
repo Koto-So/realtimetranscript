@@ -98,6 +98,7 @@ startBtn.addEventListener("click", async () => {
     startBtn.disabled = true;
     stopBtn.disabled = false;
     waveformContainer.style.display = "flex";
+    startBtn.classList.add("btn-recording");
     recordingSvg.src = "resources/svg/recording_doing.svg";
     setStatus("録音中...", "recording");
 
@@ -136,6 +137,7 @@ stopBtn.addEventListener("click", async () => {
   clearInterval(timerInterval);
   cancelAnimationFrame(animFrameId);
   waveformContainer.style.display = "none";
+  startBtn.classList.remove("btn-recording");
   recordingSvg.src = "resources/svg/recording_stop.svg";
   if (audioContext) {
     audioContext.close();
@@ -163,7 +165,11 @@ stopBtn.addEventListener("click", async () => {
     currentRawSegments = result.segments;
     displayRawSegments(result.segments);
     formatBtn.disabled = false;
-    setStatus("文字起こし完了 — AI整形ボタンで整形できます", "success");
+    summaryBtn.disabled = false;
+    setStatus(
+      "文字起こし完了 — AI整形または要約ボタンで次のアクションへ",
+      "success",
+    );
     showToast("文字起こし完了！", "success");
     loadHistory();
   } else {
@@ -286,13 +292,24 @@ formatBtn.addEventListener("click", async () => {
 
 // ===== 要約生成 =====
 summaryBtn.addEventListener("click", async () => {
-  if (!currentFormattedText) return;
+  // AI整形済みテキストがあればそちらを優先、なければ生セグメントからプレーンテキストを生成
+  const textForSummary =
+    currentFormattedText ||
+    (currentRawSegments
+      ? currentRawSegments
+          .map(
+            (s) =>
+              `話者${s.speaker || 1}: ${(s.text || s.speech || "").trim()}`,
+          )
+          .join("\n")
+      : null);
+  if (!textForSummary) return;
   summaryBtn.disabled = true;
   summaryArea.innerHTML =
     '<p class="placeholder loading-dots">要約を生成中...</p>';
   copyBtn.disabled = true;
 
-  const result = await window.electronAPI.generateSummary(currentFormattedText);
+  const result = await window.electronAPI.generateSummary(textForSummary);
 
   summaryBtn.disabled = false;
   if (result.success) {
