@@ -557,11 +557,7 @@ ipcMain.handle(
       );
       fs.writeFileSync(
         outFile,
-        JSON.stringify(
-          { segments, formatted: null, createdAt },
-          null,
-          2,
-        ),
+        JSON.stringify({ segments, formatted: null, createdAt }, null, 2),
         "utf-8",
       );
       console.log("[SAVE] 保存完了:", outFile);

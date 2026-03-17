@@ -185,7 +185,10 @@ function displayTranscript(segments, formatted) {
 
   // LLM整形テキストを表示
   if (formatted) {
-    console.log("[DISPLAY] 整形済みテキスト受け取り:", formatted.substring(0, 200));
+    console.log(
+      "[DISPLAY] 整形済みテキスト受け取り:",
+      formatted.substring(0, 200),
+    );
     const formattedDiv = document.createElement("div");
     formattedDiv.className = "formatted-transcript";
 
@@ -437,8 +440,11 @@ async function loadHistory() {
             currentFormattedText = data.formatted || "";
             currentRawSegments = data.segments || [];
             displayTranscript(currentRawSegments, currentFormattedText);
-            formatBtn.disabled = !currentRawSegments || currentRawSegments.length === 0;
-            summaryBtn.disabled = !currentFormattedText && (!currentRawSegments || currentRawSegments.length === 0);
+            formatBtn.disabled =
+              !currentRawSegments || currentRawSegments.length === 0;
+            summaryBtn.disabled =
+              !currentFormattedText &&
+              (!currentRawSegments || currentRawSegments.length === 0);
             copyBtn.disabled = true;
             setStatus(`"${t.name}" を読み込みました`, "success");
             // 文字起こしパネルへスクロール
