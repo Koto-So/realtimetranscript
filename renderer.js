@@ -185,27 +185,28 @@ function displayTranscript(segments, formatted) {
 
   // LLM整形テキストを表示
   if (formatted) {
+    console.log("[DISPLAY] 整形済みテキスト受け取り:", formatted.substring(0, 200));
     const formattedDiv = document.createElement("div");
     formattedDiv.className = "formatted-transcript";
 
     const lines = formatted.split("\n");
-    lines.forEach((line) => {
+    lines.forEach((line, idx) => {
       if (!line.trim()) return;
       const p = document.createElement("p");
 
-      if (
-        line.startsWith("話者A:") ||
-        line.startsWith("話者B:") ||
-        line.startsWith("話者C:")
-      ) {
+      // 話者行判定：「話者X: テキスト」形式（X は数字またはアルファベット）
+      const speakerMatch = line.match(/^(話者[0-9A-Zａ-ｚ０-９][\s：:]*)/);
+      if (speakerMatch) {
+        console.log(`[DISPLAY] 行${idx} マッチ:`, line.substring(0, 50));
         p.className = "speaker-line";
-        const [speaker, ...rest] = line.split(":");
+        const speaker = speakerMatch[1].trim();
+        const text = line.substring(speakerMatch[0].length).trim();
         const spanLabel = document.createElement("span");
         spanLabel.className = "speaker-label";
-        spanLabel.textContent = speaker + ":";
+        spanLabel.textContent = speaker;
         const spanText = document.createElement("span");
         spanText.className = "speaker-text";
-        spanText.textContent = rest.join(":").trim();
+        spanText.textContent = text;
         p.appendChild(spanLabel);
         p.appendChild(spanText);
       } else if (
@@ -223,6 +224,7 @@ function displayTranscript(segments, formatted) {
         p.className = "bullet-item";
         p.textContent = line;
       } else {
+        console.log(`[DISPLAY] 行${idx} 未マッチ:`, line.substring(0, 50));
         p.className = "transcript-line";
         p.textContent = line;
       }
@@ -231,6 +233,29 @@ function displayTranscript(segments, formatted) {
     });
 
     transcriptArea.appendChild(formattedDiv);
+  } else if (segments && segments.length > 0) {
+    // formatted がない場合、生のセグメントを表示
+    const div = document.createElement("div");
+    div.className = "formatted-transcript";
+    segments.forEach((seg) => {
+      const text = (seg.text || seg.speech || "").trim();
+      if (!text) return;
+      const p = document.createElement("p");
+      p.className = "speaker-line";
+      const spanLabel = document.createElement("span");
+      spanLabel.className = "speaker-label";
+      spanLabel.textContent = `話者${seg.speaker || 1}: `;
+      const spanText = document.createElement("span");
+      spanText.className = "speaker-text";
+      spanText.textContent = text;
+      p.appendChild(spanLabel);
+      p.appendChild(spanText);
+      div.appendChild(p);
+    });
+    transcriptArea.appendChild(div);
+  } else {
+    transcriptArea.innerHTML =
+      '<p class="placeholder">テキストが認識されませんでした。</p>';
   }
 
   transcriptArea.scrollTop = 0;
@@ -410,8 +435,10 @@ async function loadHistory() {
           const data = await window.electronAPI.readTranscript(t.path);
           if (data.success) {
             currentFormattedText = data.formatted || "";
-            displayTranscript(data.segments || [], data.formatted || "");
-            summaryBtn.disabled = !currentFormattedText;
+            currentRawSegments = data.segments || [];
+            displayTranscript(currentRawSegments, currentFormattedText);
+            formatBtn.disabled = !currentRawSegments || currentRawSegments.length === 0;
+            summaryBtn.disabled = !currentFormattedText && (!currentRawSegments || currentRawSegments.length === 0);
             copyBtn.disabled = true;
             setStatus(`"${t.name}" を読み込みました`, "success");
             // 文字起こしパネルへスクロール

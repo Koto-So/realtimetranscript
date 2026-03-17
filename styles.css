@@ -135,6 +135,7 @@ header h1 {
   height: 30px;
   object-fit: contain;
   pointer-events: none;
+  opacity: 1 !important;
   transition:
     width 0.2s ease,
     height 0.2s ease;
@@ -144,6 +145,7 @@ header h1 {
 #startBtn.btn-recording .btn-record-svg {
   width: 90px;
   height: 90px;
+  opacity: 1 !important;
 }
 
 /* 録音開始ボタン: 通常時は黒円形ボタン */
@@ -153,12 +155,30 @@ header h1 {
 
 /* 録音中: 黒背景を消してSVGのみ表示 */
 #startBtn.btn-recording {
-  background: transparent;
-  box-shadow: none;
+  width: auto !important;
+  height: auto !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+  opacity: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
+
 #startBtn.btn-recording:hover:not(:disabled) {
-  background: transparent;
-  box-shadow: none;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: scale(1) !important;
+}
+
+#startBtn.btn-recording:active:not(:disabled) {
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: scale(1) !important;
 }
 
 /* ボタン下ラベル */

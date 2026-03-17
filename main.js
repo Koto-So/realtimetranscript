@@ -445,7 +445,10 @@ async function formatWithLLM(rawSegments) {
   };
 
   const speakerInstruction = hasSpeakers
-    ? "[話者N] の表記は「話者A:」「話者B:」のように置き換えること。"
+    ? `【重要】各行頭に必ず話者情報を付与する。形式：「話者X: テキスト」（X は1,2,3... または A,B,C...）
+- [話者N] の表記は「話者1:」「話者2:」のように数字に置き換えること
+- 話者情報は絶対に削除しない
+- 例: 入力「[話者2]: この日は私の声が聞こえますでしょうか」→ 出力「話者2: この日は私の声が聞こえますか」`
     : "";
   const prompt = `あなたは音声認識テキストのノイズ除去専門家です。\
 以下のルールに従ってテキストを整形し、JSON の transcript フィールドに出力してください。
@@ -454,7 +457,8 @@ async function formatWithLLM(rawSegments) {
 - 認識エラーや意味不明な断片は自然な日本語に修正する
 - 言い直し・繰り返し・フィラー（えー、あの、えっと等）を除去する
 - 文末を適切に整える
-- ${speakerInstruction}要点・箇条書き・見出しなど余計なセクションは一切追加しない
+- ${speakerInstruction}
+- 要点・箇条書き・見出しなど余計なセクションは一切追加しない
 - トランスクリプト本文のみを出力する
 
 入力:
@@ -469,7 +473,9 @@ JSON:`;
     const session = new LlamaChatSession({ contextSequence: sequence });
     const response = await session.prompt(prompt, { grammar });
     // JSON をパースして transcript フィールドを取り出す
+    console.log("[LLAMA] LLM レスポンス:", response);
     const parsed = JSON.parse(response);
+    console.log("[LLAMA] パース後の transcript:", parsed.transcript);
     return parsed.transcript ?? rawText;
   } catch (e) {
     console.error("[LLAMA] formatWithLLM エラー:", e.message);
@@ -540,22 +546,25 @@ ipcMain.handle(
       const diarSegments = await diarizeAudio(tmpWav);
       const segments = alignSpeakers(whisperSegments, diarSegments);
       // AI整形はボタン押下時に実行するため、ここでは行わない
-      // asar 内は書き込み不可のため userData に保存する
-      const transcriptsDir = path.join(app.getPath("userData"), "transcripts");
+      // プロジェクト直下の transcripts/ フォルダに永続保存
+      const transcriptsDir = path.join(app.getAppPath(), "transcripts");
+      console.log("[SAVE] 保存先ディレクトリ:", transcriptsDir);
       fs.mkdirSync(transcriptsDir, { recursive: true });
+      const createdAt = new Date().toISOString();
       const outFile = path.join(
         transcriptsDir,
-        `transcript_${Date.now()}.json`,
+        `transcript_${createdAt.replace(/[:.]/g, "-")}.json`,
       );
       fs.writeFileSync(
         outFile,
         JSON.stringify(
-          { segments, formatted: null, createdAt: new Date().toISOString() },
+          { segments, formatted: null, createdAt },
           null,
           2,
         ),
         "utf-8",
       );
+      console.log("[SAVE] 保存完了:", outFile);
       return { success: true, segments, filePath: outFile };
     } catch (e) {
       console.error("音声処理エラー:", e);
@@ -604,15 +613,21 @@ ipcMain.handle("generate-summary", async (event, transcriptText) => {
 
 ipcMain.handle("list-transcripts", async () => {
   try {
-    const dir = path.join(app.getPath("userData"), "transcripts");
+    const dir = path.join(app.getAppPath(), "transcripts");
+    console.log("[LIST] 一覧取得先:", dir);
     if (!fs.existsSync(dir)) return { success: true, transcripts: [] };
     const files = fs
       .readdirSync(dir)
       .filter((f) => f.endsWith(".json"))
       .map((f) => {
         const fp = path.join(dir, f);
-        const stat = fs.statSync(fp);
-        return { name: f, path: fp, created: stat.birthtime };
+        try {
+          const data = JSON.parse(fs.readFileSync(fp, "utf-8"));
+          return { name: f, path: fp, created: new Date(data.createdAt || 0) };
+        } catch (_) {
+          const stat = fs.statSync(fp);
+          return { name: f, path: fp, created: stat.mtime };
+        }
       })
       .sort((a, b) => b.created - a.created)
       .slice(0, 20);
