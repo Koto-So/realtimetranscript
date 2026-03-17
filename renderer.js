@@ -5,6 +5,8 @@ const formatBtn = document.getElementById("formatBtn");
 const summaryBtn = document.getElementById("summaryBtn");
 const clearBtn = document.getElementById("clearBtn");
 const copyBtn = document.getElementById("copyBtn");
+const copyTranscriptBtn = document.getElementById("copyTranscriptBtn");
+const copySummaryBtn = document.getElementById("copySummaryBtn");
 const transcriptArea = document.getElementById("transcriptArea");
 const summaryArea = document.getElementById("summaryArea");
 const statusText = document.getElementById("statusText");
@@ -115,7 +117,6 @@ startBtn.addEventListener("click", async () => {
       '<p class="placeholder">文字起こし後にAI整形→要約の順に実行できます。</p>';
     formatBtn.disabled = true;
     summaryBtn.disabled = true;
-    copyBtn.disabled = true;
     currentFormattedText = "";
     currentRawSegments = null;
   } catch (e) {
@@ -308,7 +309,6 @@ formatBtn.addEventListener("click", async () => {
     currentFormattedText = result.formatted;
     displayTranscript(currentRawSegments, result.formatted);
     summaryBtn.disabled = false;
-    copyBtn.disabled = false;
     setStatus("AI整形完了", "success");
     showToast("AI整形完了！", "success");
   } else {
@@ -335,13 +335,11 @@ summaryBtn.addEventListener("click", async () => {
   summaryBtn.disabled = true;
   summaryArea.innerHTML =
     '<p class="placeholder loading-dots">要約を生成中...</p>';
-  copyBtn.disabled = true;
 
   const result = await window.electronAPI.generateSummary(textForSummary);
 
   summaryBtn.disabled = false;
   if (result.success) {
-    copyBtn.disabled = false;
     setStatus("要約完了", "success");
     summaryArea.scrollTop = 0;
   } else {
@@ -359,18 +357,34 @@ clearBtn.addEventListener("click", () => {
       '<p class="placeholder">文字起こし後にAI整形→要約の順に実行できます。</p>';
     formatBtn.disabled = true;
     summaryBtn.disabled = true;
-    copyBtn.disabled = true;
     currentFormattedText = "";
     currentRawSegments = null;
   }
 });
 
-// ===== コピー =====
-copyBtn.addEventListener("click", () => {
-  const text = summaryArea.textContent;
+// ===== 文字起こしエリアをコピー =====
+copyTranscriptBtn.addEventListener("click", () => {
+  const text = transcriptArea.textContent;
+  if (!text || text.includes("プレースホルダー")) {
+    showToast("コピーする内容がありません", "error");
+    return;
+  }
   navigator.clipboard
     .writeText(text)
-    .then(() => showToast("コピーしました", "success"))
+    .then(() => showToast("文字起こしをコピーしました", "success"))
+    .catch(() => showToast("コピー失敗", "error"));
+});
+
+// ===== 要約エリアをコピー =====
+copySummaryBtn.addEventListener("click", () => {
+  const text = summaryArea.textContent;
+  if (!text || text.includes("プレースホルダー")) {
+    showToast("コピーする内容がありません", "error");
+    return;
+  }
+  navigator.clipboard
+    .writeText(text)
+    .then(() => showToast("要約をコピーしました", "success"))
     .catch(() => showToast("コピー失敗", "error"));
 });
 
@@ -445,7 +459,6 @@ async function loadHistory() {
             summaryBtn.disabled =
               !currentFormattedText &&
               (!currentRawSegments || currentRawSegments.length === 0);
-            copyBtn.disabled = true;
             setStatus(`"${t.name}" を読み込みました`, "success");
             // 文字起こしパネルへスクロール
             document

@@ -335,6 +335,34 @@ header h1 {
   gap: 8px;
 }
 
+/* ヘッダー内アイコンボタン */
+.icon-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  transition: all 0.2s ease;
+  color: #6b7280;
+}
+.icon-btn:hover {
+  background: #f0f4f8;
+  color: #2563eb;
+}
+.icon-btn:active {
+  transform: scale(0.95);
+}
+.icon-btn.copy-btn {
+  color: #111827;
+}
+.icon-btn.copy-btn:hover {
+  background: #f0f4f8;
+  color: #111827;
+}
+
 /* ===== コンテンツエリア ===== */
 .content-area {
   min-height: 350px;
