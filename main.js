@@ -155,6 +155,10 @@ async function convertToWav(inputPath, outputPath) {
 
   // ffmpeg バージョンに応じて使用可能なフィルタを自動選択
   function getAudioFilter() {
+    // 対策3: silenceremove で無音区間を事前にカット（Whisper ハルシネーション予防）
+    // stop_periods=-1: 中間の無音も除去 / stop_duration=2: 2秒以上の無音 / stop_threshold=-50dB
+    const silenceRemove =
+      "silenceremove=stop_periods=-1:stop_duration=2:stop_threshold=-50dB";
     try {
       const result = require("child_process").spawnSync(ffmpeg, ["-filters"], {
         encoding: "utf8",
@@ -162,17 +166,23 @@ async function convertToWav(inputPath, outputPath) {
       });
       const out = (result.stdout || "") + (result.stderr || "");
       if (out.includes("afftdn")) {
-        console.log("[FFMPEG] フィルタ: afftdn (スペクトル減算ノイズ除去)");
-        return "highpass=f=80,lowpass=f=8000,afftdn=nf=-25";
+        console.log(
+          "[FFMPEG] フィルタ: afftdn (スペクトル減算ノイズ除去) + silenceremove",
+        );
+        return `highpass=f=80,lowpass=f=8000,afftdn=nf=-25,${silenceRemove}`;
       } else if (out.includes("anlmdn")) {
-        console.log("[FFMPEG] フィルタ: anlmdn (非局所平均ノイズ除去)");
-        return "highpass=f=80,lowpass=f=8000,anlmdn";
+        console.log(
+          "[FFMPEG] フィルタ: anlmdn (非局所平均ノイズ除去) + silenceremove",
+        );
+        return `highpass=f=80,lowpass=f=8000,anlmdn,${silenceRemove}`;
       } else {
-        console.log("[FFMPEG] フィルタ: 基本のみ (古いffmpeg検出)");
-        return "highpass=f=80,lowpass=f=8000";
+        console.log(
+          "[FFMPEG] フィルタ: 基本のみ (古いffmpeg検出) + silenceremove",
+        );
+        return `highpass=f=80,lowpass=f=8000,${silenceRemove}`;
       }
     } catch (_) {
-      return "highpass=f=80,lowpass=f=8000";
+      return `highpass=f=80,lowpass=f=8000,${silenceRemove}`;
     }
   }
 
@@ -224,6 +234,7 @@ async function transcribeAudio(wavPath) {
 
   return new Promise((resolve, reject) => {
     // -oj でタイムスタンプ付き JSON を出力
+    // 対策1: ハルシネーション・繰り返し防止パラメータを追加
     const args = [
       "-m",
       modelPath,
@@ -234,6 +245,15 @@ async function transcribeAudio(wavPath) {
       "-oj",
       "-of",
       wavPath,
+      "--temperature",
+      "0", // 確定的な出力でハルシネーション抑制
+      "--no-context", // 前セグメントのコンテキストを引き継がない（繰り返し防止）
+      "--compress-ratio-thold",
+      "2.4", // 繰り返し率が高いセグメントを無音判定
+      "--logprob-thold",
+      "-1.0", // 低確率セグメントを除去
+      "--no-speech-thold",
+      "0.6", // 無音判定の閾値
     ];
     console.log("[WHISPER] 実行:", mainExe, args.join(" "));
     const proc = spawn(mainExe, args, { cwd: whisperDir, stdio: "pipe" });
@@ -514,6 +534,48 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// 対策2: Whisper 出力の重複セグメントを除去
+function deduplicateSegments(segments) {
+  if (!segments || segments.length === 0) return segments;
+
+  const filtered = [];
+  let prevNormalized = null;
+  let repeatCount = 0;
+  const MAX_REPEAT = 1; // 同一テキストは1回のみ許容
+
+  for (const seg of segments) {
+    // ゼロ長セグメントを除去（start_ms === end_ms）
+    if (seg.start_ms === seg.end_ms) {
+      console.log("[DEDUP] ゼロ長セグメントを除去:", seg.text.slice(0, 40));
+      continue;
+    }
+
+    // テキストを正規化して比較（空白・句読点の揺れを吸収）
+    const normalized = seg.text.trim().replace(/[\s　]+/g, " ");
+
+    if (normalized === prevNormalized) {
+      repeatCount++;
+      if (repeatCount > MAX_REPEAT) {
+        console.log(
+          "[DEDUP] 繰り返しセグメントを除去:",
+          normalized.slice(0, 40),
+        );
+        continue;
+      }
+    } else {
+      repeatCount = 0;
+      prevNormalized = normalized;
+    }
+
+    filtered.push(seg);
+  }
+
+  console.log(
+    `[DEDUP] ${segments.length} → ${filtered.length} セグメント（${segments.length - filtered.length} 件除去）`,
+  );
+  return filtered;
+}
+
 ipcMain.handle(
   "process-audio",
   async (event, { audioDataBase64, mimeType }) => {
@@ -539,12 +601,20 @@ ipcMain.handle(
       if (!whisperSegments || whisperSegments.length === 0) {
         return { success: false, message: "音声を認識できませんでした。" };
       }
+      // 対策2: 重複・ゼロ長セグメントを除去
+      const dedupedSegments = deduplicateSegments(whisperSegments);
+      if (dedupedSegments.length === 0) {
+        return {
+          success: false,
+          message: "有効な音声セグメントが検出されませんでした。",
+        };
+      }
       mainWindow.webContents.send("status-update", {
         message: "話者分離中...",
         type: "info",
       });
       const diarSegments = await diarizeAudio(tmpWav);
-      const segments = alignSpeakers(whisperSegments, diarSegments);
+      const segments = alignSpeakers(dedupedSegments, diarSegments);
       // AI整形はボタン押下時に実行するため、ここでは行わない
       // プロジェクト直下の transcripts/ フォルダに永続保存
       const transcriptsDir = path.join(app.getAppPath(), "transcripts");
